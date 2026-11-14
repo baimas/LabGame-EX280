@@ -24,6 +24,7 @@ export class GameTerminal {
     this.linhasDesenhadas = 0;
     this.hist = -1;
     this.ocupado = false;
+    this.fila = [];
     this.world = null;
     this.cancelar = null;
     this.onCommand = null;
@@ -96,10 +97,53 @@ export class GameTerminal {
     this.cur += txt.length;
   }
 
+  // Pergunta algo ao jogador durante um comando (por exemplo, a senha do oc login).
+  ask(texto, secreto = false) {
+    return new Promise((resolve, reject) => {
+      this.write(texto);
+      this.pergunta = { resolve, reject, secreto, buf: '' };
+    });
+  }
+
+  responde(d) {
+    const p = this.pergunta;
+    for (const ch of d.replace(/\r\n?|\n/g, '\r')) {
+      if (ch === '\r') {
+        this.term.write('\r\n');
+        this.pergunta = null;
+        p.resolve(p.buf);
+        return;
+      }
+      if (ch === '\x03') {
+        this.term.write('^C\r\n');
+        this.pergunta = null;
+        p.reject(new Abort());
+        return;
+      }
+      if (ch === '\x7f') {
+        if (p.buf) {
+          p.buf = p.buf.slice(0, -1);
+          if (!p.secreto) this.term.write('\b \b');
+        }
+      } else if (ch >= ' ') {
+        p.buf += ch;
+        if (!p.secreto) this.term.write(ch);
+      }
+    }
+  }
+
   async entrada(d) {
     if (!this.world) return;
+    if (this.pergunta) {
+      this.responde(d);
+      return;
+    }
     if (this.ocupado) {
-      if (d === '\x03' && this.cancelar) this.cancelar();
+      // Ctrl+C interrompe; o resto fica guardado e é digitado quando o comando terminar.
+      if (d === '\x03') {
+        this.fila = [];
+        this.cancelar?.();
+      } else this.fila.push(d);
       return;
     }
     // Texto colado ou entregue em bloco: trata caractere a caractere, para que
@@ -134,6 +178,15 @@ export class GameTerminal {
       case '\x1bf': case '\x1b[1;5C': case '\x1b[1;3C': { const m = this.buf.slice(this.cur).match(/^\s*\S+/); this.cur += m ? m[0].length : 0; break; }
       case '\x03': this.term.write('^C\r\n'); this.buf = ''; this.cur = 0; this.pendente = ''; this.hist = -1; this.novoPrompt(); return;
       case '\x0c': this.term.write('\x1b[2J\x1b[3J\x1b[H'); this.linhasDesenhadas = 0; break;
+      case '\x04':
+        // Ctrl+D com a linha vazia encerra o shell do pod, como no terminal real.
+        if (!this.buf && this.world.shell.pod) {
+          this.buf = 'exit';
+          this.cur = 4;
+          await this.enter();
+          return;
+        }
+        break;
       case '\t': this.completa(); return;
       default:
         if (d.startsWith('\x1b') || d < ' ') return;
@@ -163,6 +216,11 @@ export class GameTerminal {
       await this.executa(completo);
     }
     if (this.world) this.novoPrompt();
+    if (this.fila.length && this.world) {
+      const pendente = this.fila.join('');
+      this.fila = [];
+      await this.entrada(pendente);
+    }
   }
 
   async executa(cmd) {
@@ -174,7 +232,10 @@ export class GameTerminal {
       // Saídas sem quebra de linha final (jsonpath, por exemplo) não colam no prompt.
       if (this.ultimo !== '\n') this.write('\n');
     } catch (e) {
-      if (e instanceof Abort) this.term.write('^C\r\n');
+      if (e instanceof Abort) {
+        this.fila = [];
+        this.term.write('^C\r\n');
+      }
       else {
         console.error(e);
         this.write(`[simulador] erro interno: ${e.message}\n`);

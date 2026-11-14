@@ -7,7 +7,7 @@ import { REGISTRY } from '../sim/images.js';
 
 export { REGISTRY, HOME };
 
-export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, salvo } = {}) {
+export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, salvo } = {}) {
   const cluster = salvo ? Cluster.restore(salvo.cluster) : new Cluster();
   const fs = salvo ? FS.restore(salvo.fs) : new FS();
   const env = {
@@ -18,6 +18,7 @@ export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, salvo } 
     t: (pt, en) => (env.lang === 'en' ? en : pt),
     openEditor,
     write,
+    ask,
     // Fora do navegador o tempo simulado avança na hora.
     sleep: sleep || (async (s) => cluster.tick(s)),
   };
@@ -45,7 +46,7 @@ export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, salvo } 
     },
     pods: (ns, rotulos = {}) => cluster.list('Pod', ns).filter((p) => Object.entries(rotulos).every(([k, v]) => p.metadata.labels?.[k] === v)),
     podPronto,
-    serialize: () => ({ cluster: cluster.serialize(), fs: fs.serialize(), session: env.session, cwd: shell.cwd }),
+    serialize: () => ({ cluster: cluster.serialize(), fs: fs.serialize(), session: env.session, cwd: shell.cwdEstacao() }),
   };
   return w;
 }

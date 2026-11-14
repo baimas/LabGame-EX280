@@ -224,9 +224,10 @@ export class Cluster {
     if (o.kind === 'Service') {
       o.spec.type ??= 'ClusterIP';
       if (o.spec.type !== 'ExternalName') o.spec.clusterIP ??= this.novoIp('172.30');
-      for (const p of o.spec.ports || []) {
+      for (const [i, p] of (o.spec.ports || []).entries()) {
         p.protocol ??= 'TCP';
         p.targetPort ??= p.port;
+        if (o.spec.type === 'NodePort' || o.spec.type === 'LoadBalancer') p.nodePort ??= 30000 + (this.ipSeq * 7 + i * 13) % 2768;
       }
     }
     if (o.kind === 'Route') {

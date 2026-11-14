@@ -278,18 +278,19 @@ export const builtins = {
   },
 
   cut(ctx) {
-    const { o, pos } = opcoes(ctx.args, 'df');
-    if (!o.f) return falha('cut: you must specify a list of fields');
+    const { o, pos } = opcoes(ctx.args, 'dfc');
+    if (!o.f && !o.c) return falha('cut: you must specify a list of bytes, characters, or fields');
     const e = entrada(ctx, pos, 'cut');
     if (e.erro) return e.erro;
     const d = o.d ?? '\t';
-    const campos = String(o.f).split(',').flatMap((f) => {
+    const campos = String(o.f || o.c).split(',').flatMap((f) => {
       const [a, b] = f.split('-');
       if (b === undefined) return [Number(a)];
       const out = [];
       for (let i = Number(a || 1); i <= Number(b || 50); i++) out.push(i);
       return out;
     });
+    if (o.c) return ok(junta(linhasDe(e.texto).map((l) => campos.map((c) => l[c - 1] ?? '').join(''))));
     return ok(junta(linhasDe(e.texto).map((l) => {
       const p = l.split(d);
       return campos.map((c) => p[c - 1]).filter((x) => x !== undefined).join(d);
@@ -401,9 +402,31 @@ export const builtins = {
     return ok();
   },
 
-  watch(ctx) {
-    const resto = ctx.args.filter((a, i, l) => !/^-/.test(a) && !/^-n$/.test(l[i - 1] || ''));
-    return falha(ctx.env.t(`[simulador] watch não é simulado. Repita o comando: ${resto.join(' ')}`, `[simulator] watch is not simulated. Re-run the command: ${resto.join(' ')}`));
+  async watch(ctx) {
+    let intervalo = 2;
+    const resto = [];
+    for (let i = 0; i < ctx.args.length; i++) {
+      const a = ctx.args[i];
+      if (resto.length) resto.push(a);
+      else if (a === '-n' || a === '--interval') intervalo = Math.max(1, Number(ctx.args[++i]) || 2);
+      else if (/^-n\d/.test(a)) intervalo = Math.max(1, Number(a.slice(2)) || 2);
+      else if (/^--interval=/.test(a)) intervalo = Math.max(1, Number(a.split('=')[1]) || 2);
+      else if (/^-/.test(a)) continue;
+      else resto.push(a);
+    }
+    if (!resto.length) return falha('Usage:\n watch [options] command');
+    const cmd = resto.join(' ');
+    const tela = async () => {
+      const r = await ctx.sh.run(cmd, { sub: true });
+      const quando = new Date(ctx.env.cluster.now * 1000).toUTCString();
+      return `Every ${intervalo.toFixed(1)}s: ${cmd}`.padEnd(60) + `workstation: ${quando}\n\n${r.out}`;
+    };
+    // Sem terminal (testes), mostra uma vez só.
+    if (!ctx.env.write) return ok(await tela());
+    for (;;) {
+      ctx.env.write('\x1b[2J\x1b[H' + (await tela()));
+      await ctx.env.sleep(intervalo);
+    }
   },
 
   vi: editor,
@@ -418,8 +441,8 @@ export const builtins = {
 
   help({ env }) {
     return ok(env.t(
-      'Comandos simulados: oc (kubectl), cat, ls, cd, pwd, mkdir, rm, cp, mv, touch, echo, grep, head, tail, wc, sort, uniq, cut, tr, awk, sed, base64, export, env, history, clear, sleep, vi/vim/nano, lab.\nUse `oc --help` para ver os subcomandos do oc disponíveis e `lab grade` para corrigir a missão.\n',
-      'Simulated commands: oc (kubectl), cat, ls, cd, pwd, mkdir, rm, cp, mv, touch, echo, grep, head, tail, wc, sort, uniq, cut, tr, awk, sed, base64, export, env, history, clear, sleep, vi/vim/nano, lab.\nUse `oc --help` to list the available oc subcommands and `lab grade` to grade the mission.\n',
+      'Comandos simulados: oc (kubectl), curl, watch, cat, ls, cd, pwd, mkdir, rm, cp, mv, touch, echo, grep, head, tail, wc, sort, uniq, cut, tr, awk, sed, base64, export, env, history, clear, sleep, vi/vim/nano, lab.\nUse `oc --help` e `oc <comando> -h` para a ajuda do oc, `oc explain` para os campos dos recursos, `oc rsh POD` para entrar em um pod e `lab grade` para corrigir a missão.\n',
+      'Simulated commands: oc (kubectl), curl, watch, cat, ls, cd, pwd, mkdir, rm, cp, mv, touch, echo, grep, head, tail, wc, sort, uniq, cut, tr, awk, sed, base64, export, env, history, clear, sleep, vi/vim/nano, lab.\nUse `oc --help` and `oc <command> -h` for oc help, `oc explain` for resource fields, `oc rsh POD` to open a shell in a pod, and `lab grade` to grade the mission.\n',
     ));
   },
 };

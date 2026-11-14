@@ -11,6 +11,9 @@ import { resolveEnv, podPronto } from '../controllers.js';
 import { VERSAO, KUBE } from '../seed.js';
 import { parseArgs, ok, erro, naoSimulado, nsDe, alvos, umAlvo, lerManifestos, normaliza, tipoOuErro } from './args.js';
 import { tabela, ordena, paraYaml, paraJson, descreve, podResumo } from './output.js';
+import { ajuda } from './help.js';
+import { explain as explica } from './explain.js';
+import { contextoPod } from '../pod.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
 
@@ -74,7 +77,7 @@ function entrega(ctx, f, obj, verbo = 'created') {
 
 // ------------------------------------------------------------------- get
 
-function get(ctx) {
+async function get(ctx) {
   const { pos, f } = parseArgs(ctx.args);
   const c = ctx.env.cluster;
   const ns = nsDe(ctx, f);
@@ -98,14 +101,23 @@ function get(ctx) {
       const comNs = grupos.some((g) => g.r.namespaced) && !todos;
       return { err: comNs ? `No resources found in ${ns} namespace.\n` : 'No resources found\n', code: 0 };
     }
-    const partes = grupos.filter((g) => g.itens.length).map((g) => tabela(g.k.alias ? g.k : g.r, g.itens, c, {
-      wide: saida === 'wide',
-      labels: f.has('show-labels'),
-      todosNs: todos,
-      prefixo: grupos.length > 1,
-      semCabecalho: f.has('no-headers'),
-    }));
-    return ok(partes.join('\n'));
+    const opcoesTabela = (semCabecalho) => ({ wide: saida === 'wide', labels: f.has('show-labels'), todosNs: todos, prefixo: grupos.length > 1, semCabecalho });
+    const partes = grupos.filter((g) => g.itens.length).map((g) => tabela(g.k.alias ? g.k : g.r, g.itens, c, opcoesTabela(f.has('no-headers'))));
+    if (!f.has('watch') || !ctx.env.write) return ok(partes.join('\n'));
+    // -w: imprime a lista e depois cada mudança, até o Ctrl+C.
+    emite(ctx, partes.join('\n'));
+    const linha = (g, o) => tabela(g.k.alias ? g.k : g.r, [o], c, opcoesTabela(true));
+    const vistos = new Map(grupos.flatMap((g) => g.itens.map((o) => [o.metadata.uid, linha(g, o)])));
+    for (;;) {
+      await ctx.env.sleep(1);
+      for (const g of seleciona(ctx, pos, f, 'get')) {
+        for (const o of g.itens) {
+          const l = linha(g, o);
+          if (vistos.get(o.metadata.uid) !== l) emite(ctx, l);
+          vistos.set(o.metadata.uid, l);
+        }
+      }
+    }
   }
 
   const planos = grupos.flatMap((g) => g.itens.map((o) => ordena(clone(visao(o, g.k)))));
@@ -313,7 +325,17 @@ function dadosDe(ctx, f) {
     if (!fs.isFile(caminho)) throw erro(`error: error reading ${arq}: no such file or directory`);
     dados[chave || arq.split('/').pop()] = fs.read(caminho);
   }
-  if (f.has('from-env-file')) throw naoSimulado(ctx, '--from-env-file');
+  for (const a of f.all('from-env-file')) {
+    const caminho = fs.resolve(ctx.sh.cwd, a);
+    if (!fs.isFile(caminho)) throw erro(`error: open ${a}: no such file or directory`);
+    for (const linha of fs.read(caminho).split('\n')) {
+      const t = linha.trim();
+      if (!t || t.startsWith('#')) continue;
+      const i = t.indexOf('=');
+      if (i < 1) throw erro(`error: "${t}" is not a valid key name: a valid environment variable name must consist of alphabetic characters, digits, '_', '-', or '.', and must not start with a digit`);
+      dados[t.slice(0, i)] = t.slice(i + 1);
+    }
+  }
   return dados;
 }
 
@@ -351,23 +373,79 @@ const GERADORES = {
       };
       return { kind: 'Secret', metadata: { name: nome }, type: 'kubernetes.io/tls', data: { 'tls.crt': le('cert'), 'tls.key': le('key') } };
     }
-    throw naoSimulado(ctx, `oc create secret ${tipo}`);
+    if (tipo === 'docker-registry') {
+      const servidor = f.one('docker-server') || 'https://index.docker.io/v1/';
+      const usuario = f.one('docker-username');
+      const senha = f.one('docker-password');
+      if (!usuario || !senha) throw erro('error: either --from-file or the combination of --docker-username, --docker-password and --docker-server is required');
+      const conf = { auths: { [servidor]: { username: usuario, password: senha, ...(f.has('docker-email') ? { email: f.one('docker-email') } : {}), auth: b64.enc(`${usuario}:${senha}`) } } };
+      return { kind: 'Secret', metadata: { name: nome }, type: 'kubernetes.io/dockerconfigjson', data: { '.dockerconfigjson': b64.enc(JSON.stringify(conf)) } };
+    }
+    throw desconhecido(tipo, 'create secret');
   },
   serviceaccount(ctx, pos) {
     return { kind: 'ServiceAccount', metadata: { name: pos[0] } };
   },
   service(ctx, pos, f) {
     const [tipo, nome] = pos;
-    const mapa = { clusterip: 'ClusterIP', nodeport: 'NodePort', loadbalancer: 'LoadBalancer' };
-    if (!mapa[tipo]) throw naoSimulado(ctx, `oc create service ${tipo}`);
-    const portas = f.all('tcp').map((t) => {
-      const [porta, alvo] = String(t).split(':');
+    const mapa = { clusterip: 'ClusterIP', nodeport: 'NodePort', loadbalancer: 'LoadBalancer', externalname: 'ExternalName' };
+    if (!mapa[tipo]) throw desconhecido(tipo, 'create service');
+    if (!nome) throw erro('error: exactly one NAME is required, got 0');
+    if (tipo === 'externalname') {
+      if (!f.has('external-name')) throw erro('error: required flag(s) "external-name" not set');
+      return { kind: 'Service', metadata: { name: nome, labels: { app: nome } }, spec: { type: 'ExternalName', externalName: f.one('external-name') } };
+    }
+    const portas = f.all('tcp').flatMap((t) => String(t).split(',')).map((t) => {
+      const [porta, alvo] = t.split(':');
       return { name: `${porta}-${alvo || porta}`, port: Number(porta), targetPort: Number(alvo || porta), protocol: 'TCP' };
     });
-    return { kind: 'Service', metadata: { name: nome, labels: { app: nome } }, spec: { type: mapa[tipo], selector: { app: nome }, ports: portas } };
+    if (!portas.length && f.one('clusterip') !== 'None') throw erro('error: at least one tcp port specifier must be provided');
+    if (tipo === 'nodeport' && f.has('node-port')) for (const p of portas) p.nodePort = Number(f.one('node-port'));
+    const spec = { type: mapa[tipo], selector: { app: nome }, ports: portas };
+    if (f.one('clusterip') === 'None') spec.clusterIP = 'None';
+    return { kind: 'Service', metadata: { name: nome, labels: { app: nome } }, spec };
+  },
+  route(ctx, pos, f) {
+    const [tipo, nomeArg] = pos;
+    if (!['edge', 'passthrough', 'reencrypt'].includes(tipo)) throw desconhecido(tipo, 'create route');
+    const svc = String(f.one('service') || '').replace(/^(services?|svc)\//, '');
+    if (!svc) throw erro('error: you must specify a service via --service');
+    const alvo = ctx.env.cluster.must('Service', svc, nsDe(ctx, f));
+    const le = (flag) => {
+      if (!f.has(flag)) return undefined;
+      const p = ctx.env.fs.resolve(ctx.sh.cwd, f.one(flag));
+      if (!ctx.env.fs.isFile(p)) throw erro(`error: open ${f.one(flag)}: no such file or directory`);
+      return ctx.env.fs.read(p);
+    };
+    const tls = { termination: tipo };
+    if (tipo !== 'passthrough') {
+      for (const [flag, campo] of [['cert', 'certificate'], ['key', 'key'], ['ca-cert', 'caCertificate'], ['dest-ca-cert', 'destinationCACertificate']]) {
+        const v = le(flag);
+        if (v !== undefined) tls[campo] = v;
+      }
+    }
+    if (f.has('insecure-policy')) {
+      const pol = String(f.one('insecure-policy'));
+      if (!['Allow', 'None', 'Redirect'].includes(pol)) throw erro(`error: invalid insecure policy "${pol}"`);
+      if (tipo === 'passthrough' && pol === 'Allow') throw erro(`The Route "${nomeArg || svc}" is invalid: spec.tls.insecureEdgeTerminationPolicy: Invalid value: "Allow": InsecureEdgeTerminationPolicy is only allowed for edge termination; for passthrough termination only None and Redirect are valid`);
+      tls.insecureEdgeTerminationPolicy = pol;
+    }
+    const rota = { kind: 'Route', metadata: { name: nomeArg || svc, labels: clone(alvo.metadata.labels) }, spec: { to: { kind: 'Service', name: svc }, tls } };
+    if (f.has('hostname')) rota.spec.host = f.one('hostname');
+    if (f.has('path')) rota.spec.path = f.one('path');
+    const porta = f.one('port') ?? alvo.spec.ports?.[0]?.name ?? alvo.spec.ports?.[0]?.targetPort;
+    if (porta !== undefined && porta !== '') rota.spec.port = { targetPort: /^\d+$/.test(String(porta)) ? Number(porta) : porta };
+    return rota;
   },
 };
 GERADORES.ns = GERADORES.namespace;
+
+// Subcomandos de `oc create` que existem no oc real.
+const CREATE_REAIS = ['build', 'clusterresourcequota', 'clusterrole', 'clusterrolebinding', 'configmap', 'cronjob', 'deployment', 'deploymentconfig', 'identity', 'imagestream', 'imagestreamtag', 'ingress', 'job', 'namespace', 'poddisruptionbudget', 'priorityclass', 'quota', 'role', 'rolebinding', 'route', 'secret', 'service', 'serviceaccount', 'token', 'user', 'useridentitymapping'];
+// Subcomandos que agrupam outros e mostram a ajuda quando chamados sozinhos.
+const CREATE_GRUPOS = ['secret', 'service', 'svc', 'route'];
+
+const desconhecido = (tipo, comando) => erro(`error: unknown command "${tipo}"\nSee 'oc ${comando} -h' for help and examples`);
 GERADORES.deploy = GERADORES.deployment;
 GERADORES.cm = GERADORES.configmap;
 GERADORES.sa = GERADORES.serviceaccount;
@@ -396,7 +474,11 @@ function create(ctx) {
   const [tipo, ...nomes] = pos;
   if (!tipo) throw erro('error: must specify one of -f and -k');
   const gerador = GERADORES[tipo];
-  if (!gerador) throw naoSimulado(ctx, `oc create ${tipo}`);
+  if (!gerador) {
+    if (CREATE_REAIS.includes(tipo)) throw naoSimulado(ctx, `oc create ${tipo}`);
+    throw desconhecido(tipo, 'create');
+  }
+  if (!nomes.length && CREATE_GRUPOS.includes(tipo)) return ok(ajuda(['create', tipo === 'svc' ? 'service' : tipo]));
   if (!nomes.length) throw erro('error: exactly one NAME is required, got 0');
   const obj = gerador(ctx, nomes, f, resto);
   if (c.tipo(obj.kind).namespaced) obj.metadata.namespace = ns;
@@ -474,13 +556,30 @@ function projects(ctx) {
   return ok(`You have access to the following projects and can switch between them with ' project <projectname>':\n\n${nomes.map((n) => (n === s.namespace ? '  * ' : '    ') + n).join('\n')}\n\nUsing project "${s.namespace}" on server "${SERVER}".\n`);
 }
 
-function login(ctx) {
-  const { f } = parseArgs(ctx.args);
+const tokenDe = (u) => `sha256~${hashNum(u).toString(36)}SimuladoNaoEhUmTokenReal`;
+
+async function login(ctx) {
+  const { pos, f } = parseArgs(ctx.args);
   const c = ctx.env.cluster;
-  const u = f.one('username');
-  const p = f.one('password') ?? f.one('patch');
-  if (!u || u === true) throw naoSimulado(ctx, ctx.env.t('oc login interativo (use -u e -p)', 'interactive oc login (use -u and -p)'));
-  if (p === undefined || p === true) throw naoSimulado(ctx, ctx.env.t('oc login com senha interativa (use -p)', 'oc login with interactive password (use -p)'));
+  const servidor = f.one('server') || pos[0];
+  if (servidor) {
+    const host = String(servidor).replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!/^api\.ocp4\.example\.com(:6443)?$/.test(host)) return { err: `error: dial tcp: lookup ${host.split(':')[0]} on 172.25.250.254:53: no such host - verify you have provided the correct host and port and that the server is currently running.\n`, code: 1 };
+  }
+  let u = f.one('username');
+  let p = f.one('password') ?? f.one('patch');
+  if (f.has('token')) {
+    u = Object.keys(c.users).find((x) => tokenDe(x) === f.one('token'));
+    if (!u) return { err: 'error: The token provided is invalid or expired.\n\n', code: 1 };
+    p = c.users[u];
+  }
+  const perguntar = (!u || u === true) || p === undefined || p === true;
+  if (perguntar) {
+    if (!ctx.env.ask) throw naoSimulado(ctx, ctx.env.t('oc login interativo', 'interactive oc login'));
+    emite(ctx, `Authentication required for ${SERVER} (openshift)\n`);
+    if (!u || u === true) u = (await ctx.env.ask('Username: ')).trim();
+    if (p === undefined || p === true) p = await ctx.env.ask('Password: ', true);
+  }
   if (c.users[u] !== p) return { err: 'Login failed (401 Unauthorized)\nVerify you have provided the correct credentials.\n', code: 1 };
   ctx.env.session.user = u;
   const n = c.list('Namespace').length;
@@ -491,7 +590,7 @@ function whoami(ctx) {
   const { f } = parseArgs(ctx.args);
   if (f.has('show-server')) return ok(SERVER + '\n');
   if (f.has('show-console')) return ok(`https://console-openshift-console.${APPS_DOMAIN}\n`);
-  if (f.has('show-token') || f.has('t')) return ok(`sha256~${hashNum(ctx.env.session.user).toString(36)}SimuladoNaoEhUmTokenReal\n`);
+  if (f.has('show-token') || f.has('t')) return ok(`${tokenDe(ctx.env.session.user)}\n`);
   return ok(ctx.env.session.user + '\n');
 }
 
@@ -563,10 +662,23 @@ function expose(ctx) {
 // ----------------------------------------------------- alterações pontuais
 
 // Altera o template de pod de um deployment e grava.
-function mudaTemplate(ctx, k, nome, ns, fn) {
+function mudaTemplate(ctx, sub, k, nome, ns, fn) {
   const c = ctx.env.cluster;
-  if (k.kind !== 'Deployment') throw naoSimulado(ctx, `oc set ... ${k.singular}`);
-  const d = clone(c.must('Deployment', nome, ns));
+  if (k.kind === 'Pod') {
+    // Um pod em execução só aceita troca de imagem.
+    if (sub !== 'image') throw erro(`The Pod "${nome}" is invalid: spec: Forbidden: pod updates may not change fields other than \`spec.containers[*].image\`,\`spec.initContainers[*].image\`,\`spec.activeDeadlineSeconds\`,\`spec.tolerations\` (only additions to existing tolerations),\`spec.terminationGracePeriodSeconds\` (allow it to be set to 1 if it was previously negative)`);
+    const p = clone(c.must('Pod', nome, ns));
+    const antes = JSON.stringify(p.spec);
+    fn(p.spec, p);
+    if (JSON.stringify(p.spec) === antes) return false;
+    c.update(p);
+    return true;
+  }
+  if (!['Deployment', 'ReplicaSet'].includes(k.kind)) {
+    c.must(k.kind, nome, ns);
+    throw erro(`error: ${k.plural}/${nome} the object is not a pod or does not have a pod template: *v1.${k.kind}`);
+  }
+  const d = clone(c.must(k.kind, nome, ns));
   const antes = JSON.stringify(d.spec.template);
   fn(d.spec.template.spec, d);
   if (JSON.stringify(d.spec.template) === antes) return false;
@@ -582,11 +694,16 @@ function quais(spec, f) {
 }
 
 function set(ctx) {
-  const [sub, ...resto] = ctx.args;
+  let [sub, ...resto] = ctx.args;
   const { pos, f } = parseArgs(resto, ['read-only']);
   const c = ctx.env.cluster;
   const ns = nsDe(ctx, f);
-  if (!['env', 'image', 'resources', 'volume'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub ?? ''}`.trim());
+  if (sub === 'volumes') sub = 'volume';
+  if (!sub) return ok(ajuda(['set']));
+  if (!['env', 'image', 'resources', 'volume'].includes(sub)) {
+    if (['build-hook', 'build-secret', 'data', 'deployment-hook', 'image-lookup', 'probe', 'route-backends', 'selector', 'serviceaccount', 'subject', 'triggers'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub}`);
+    throw desconhecido(sub, 'set');
+  }
   const { k, nome, resto: itens } = umAlvo(pos, 'set');
 
   if (sub === 'env') {
@@ -620,7 +737,7 @@ function set(ctx) {
       }
     }
     if (!novos.length && !remove.length) throw erro('error: at least one environment variable must be provided');
-    mudaTemplate(ctx, k, nome, ns, (spec) => {
+    mudaTemplate(ctx, sub, k, nome, ns, (spec) => {
       for (const ct of quais(spec, f)) {
         let env = (ct.env || []).filter((e) => !remove.includes(e.name) && !novos.some((n) => n.name === e.name));
         env = [...env, ...clone(novos)];
@@ -633,7 +750,7 @@ function set(ctx) {
 
   if (sub === 'image') {
     if (!itens.length) throw erro('error: at least one image update is required');
-    const mudou = mudaTemplate(ctx, k, nome, ns, (spec) => {
+    const mudou = mudaTemplate(ctx, sub, k, nome, ns, (spec) => {
       for (const it of itens) {
         const i = it.indexOf('=');
         if (i < 1) throw erro(`error: invalid image update "${it}", expected CONTAINER=IMAGE`);
@@ -646,11 +763,22 @@ function set(ctx) {
   }
 
   if (sub === 'volume') {
-    if (!f.has('add') && !f.has('remove')) throw naoSimulado(ctx, ctx.env.t('oc set volume sem --add ou --remove', 'oc set volume without --add or --remove'));
+    if (!f.has('add') && !f.has('remove')) {
+      const o = c.must(k.kind, nome, ns);
+      const spec = k.kind === 'Pod' ? o.spec : o.spec.template?.spec;
+      if (!spec) throw erro(`error: ${k.plural}/${nome} the object is not a pod or does not have a pod template: *v1.${k.kind}`);
+      let out = `${k.plural}/${nome}\n`;
+      for (const v of spec.volumes || []) {
+        const fonte = v.configMap ? `configMap/${v.configMap.name}` : v.secret ? `secret/${v.secret.secretName}` : v.persistentVolumeClaim ? `pvc/${v.persistentVolumeClaim.claimName}` : v.hostPath ? `host path ${v.hostPath.path}` : 'empty directory';
+        out += `  ${fonte} as ${v.name}\n`;
+        for (const ct of spec.containers) for (const m of (ct.volumeMounts || []).filter((x) => x.name === v.name)) out += `    mounted at ${m.mountPath}${m.readOnly ? ' (read-only)' : ''}${spec.containers.length > 1 ? ` in container ${ct.name}` : ''}\n`;
+      }
+      return ok(out);
+    }
     const nomeVol = f.one('name') || `volume-${rand(5)}`;
     if (f.has('remove')) {
       if (!f.has('name')) throw erro('error: must specify --name with --remove');
-      mudaTemplate(ctx, k, nome, ns, (spec) => {
+      mudaTemplate(ctx, sub, k, nome, ns, (spec) => {
         if (!(spec.volumes || []).some((v) => v.name === nomeVol)) throw erro(`error: volume '${nomeVol}' not found`);
         spec.volumes = spec.volumes.filter((v) => v.name !== nomeVol);
         if (!spec.volumes.length) delete spec.volumes;
@@ -672,8 +800,9 @@ function set(ctx) {
     else if (tipo === 'secret') vol.secret = { secretName: exige('secret-name') };
     else if (tipo === 'pvc' || tipo === 'persistentvolumeclaim') vol.persistentVolumeClaim = { claimName: exige('claim-name') };
     else if (tipo === 'emptydir') vol.emptyDir = {};
-    else throw naoSimulado(ctx, `oc set volume --type=${tipo}`);
-    mudaTemplate(ctx, k, nome, ns, (spec) => {
+    else if (tipo === 'hostpath') vol.hostPath = { path: exige('path') };
+    else throw erro(`error: invalid volume type ${tipo}. Supported types: emptyDir, hostPath, secret, configmap, persistentVolumeClaim`);
+    mudaTemplate(ctx, sub, k, nome, ns, (spec) => {
       if ((spec.volumes || []).some((v) => v.name === nomeVol)) {
         if (!f.has('overwrite')) throw erro(`error: volume '${nomeVol}' already exists. Use --overwrite to replace`);
         spec.volumes = spec.volumes.filter((v) => v.name !== nomeVol);
@@ -694,7 +823,7 @@ function set(ctx) {
 
   const le = (txt) => Object.fromEntries(String(txt).split(',').map((p) => p.split('=')));
   if (!f.has('limits') && !f.has('requests')) throw erro('error: you must specify an update for requests or limits');
-  mudaTemplate(ctx, k, nome, ns, (spec) => {
+  mudaTemplate(ctx, sub, k, nome, ns, (spec) => {
     for (const ct of quais(spec, f)) {
       ct.resources ??= {};
       if (f.has('limits')) ct.resources.limits = { ...ct.resources.limits, ...le(f.one('limits')) };
@@ -822,10 +951,13 @@ async function rollout(ctx) {
   const { pos, f } = parseArgs(resto);
   const c = ctx.env.cluster;
   const ns = nsDe(ctx, f);
-  if (!['status', 'restart', 'history', 'undo', 'pause', 'resume'].includes(sub)) throw erro(`error: unknown command "${sub ?? ''}" for "oc rollout"`);
-  if (sub === 'pause' || sub === 'resume') throw naoSimulado(ctx, `oc rollout ${sub}`);
+  if (!sub) return ok(ajuda(['rollout']));
+  if (!['status', 'restart', 'history', 'undo', 'pause', 'resume'].includes(sub)) {
+    if (['cancel', 'latest', 'retry'].includes(sub)) throw naoSimulado(ctx, `oc rollout ${sub}`);
+    throw desconhecido(sub, 'rollout');
+  }
   const { k, nome } = umAlvo(pos, 'rollout');
-  if (k.kind !== 'Deployment') throw naoSimulado(ctx, `oc rollout ${sub} ${k.singular}`);
+  if (k.kind !== 'Deployment') throw erro(`error: no ${sub === 'undo' ? 'rollbacker' : sub === 'history' ? 'history viewer' : sub === 'status' ? 'status viewer' : 'handler'} has been implemented for "${k.kind}"`);
   const d = c.must('Deployment', nome, ns);
   const rss = () => c.list('ReplicaSet', ns).filter((r) => donoDe(r, d)).sort((a, b) => Number(a.metadata.annotations[REV]) - Number(b.metadata.annotations[REV]));
 
@@ -847,6 +979,16 @@ async function rollout(ctx) {
       await ctx.env.sleep(1);
     }
     return { out, err: 'error: timed out waiting for the condition\n', code: 1 };
+  }
+
+  if (sub === 'pause' || sub === 'resume') {
+    const pausar = sub === 'pause';
+    if (Boolean(d.spec.paused) === pausar) throw erro(`error: deployments.apps "${nome}" is ${pausar ? 'already paused' : 'not paused'}`);
+    const novo = clone(d);
+    if (pausar) novo.spec.paused = true;
+    else delete novo.spec.paused;
+    c.update(novo);
+    return ok(`deployment.apps/${nome} ${pausar ? 'paused' : 'resumed'}\n`);
   }
 
   if (sub === 'restart') {
@@ -876,9 +1018,13 @@ async function rollout(ctx) {
 // ---------------------------------------------------------- logs e exec
 
 // Resolve um pod a partir de `pod`, `pod/x`, `deploy/x`...
-function achaPod(ctx, alvo, ns) {
+function achaPod(ctx, alvo, ns, comando = 'logs') {
   const c = ctx.env.cluster;
-  if (!alvo) throw erro('error: expected \'logs [-f] [-p] (POD | TYPE/NAME) [-c CONTAINER]\'.\nPOD or TYPE/NAME is a required argument for the logs command');
+  if (!alvo) {
+    if (comando === 'exec') throw erro("error: expected 'exec (POD | TYPE/NAME) [-c CONTAINER] [flags] -- COMMAND [args...]'.\nPOD or TYPE/NAME is a required argument for the exec command\nSee 'oc exec -h' for help and examples");
+    if (comando === 'rsh') throw erro("error: rsh requires a single Pod to connect to\nSee 'oc rsh -h' for help and examples");
+    throw erro('error: expected \'logs [-f] [-p] (POD | TYPE/NAME) [-c CONTAINER]\'.\nPOD or TYPE/NAME is a required argument for the logs command');
+  }
   if (!alvo.includes('/')) return { pod: c.must('Pod', alvo, ns) };
   const k = tipoOuErro(alvo.split('/')[0]);
   const nome = alvo.slice(alvo.indexOf('/') + 1);
@@ -893,10 +1039,10 @@ function achaPod(ctx, alvo, ns) {
   return { pod: pods[0], aviso: pods.length > 1 ? `Found ${pods.length} pods, using pod/${pods[0].metadata.name}\n` : '' };
 }
 
-function logs(ctx) {
+async function logs(ctx) {
   const { pos, f } = parseArgs(ctx.args, ['patch', 'filename']);
   const c = ctx.env.cluster;
-  const { pod, aviso = '' } = achaPod(ctx, pos[0], nsDe(ctx, f));
+  const { pod, aviso = '' } = achaPod(ctx, pos[0], nsDe(ctx, f), 'logs');
   const ct = f.one('container') || pos[1] || pod.spec.containers[0].name;
   if (!pod.spec.containers.some((x) => x.name === ct)) throw erro(`error: container ${ct} is not valid for pod ${pod.metadata.name}`);
   const reg = c.side[pod.metadata.uid]?.logs?.[ct];
@@ -905,39 +1051,57 @@ function logs(ctx) {
   if (reg.espera) return esperando(reg.espera);
   let linhas = reg.linhas;
   if (f.has('tail')) linhas = linhas.slice(-Number(f.one('tail')));
-  return { err: aviso, out: linhas.length ? linhas.join('\n') + '\n' : '', code: 0 };
+  const texto = linhas.length ? linhas.join('\n') + '\n' : '';
+  if (!f.has('follow') || !ctx.env.write) return { err: aviso, out: texto, code: 0 };
+  // -f: segue o log até o Ctrl+C ou até o pod deixar de existir.
+  emite(ctx, aviso + texto);
+  let vistas = reg.linhas.length;
+  for (;;) {
+    await ctx.env.sleep(1);
+    const atual = c.get('Pod', pod.metadata.name, pod.metadata.namespace);
+    if (!atual || atual.metadata.uid !== pod.metadata.uid) return ok();
+    const novas = c.side[pod.metadata.uid]?.logs?.[ct]?.linhas || [];
+    if (novas.length > vistas) emite(ctx, novas.slice(vistas).join('\n') + '\n');
+    vistas = novas.length;
+  }
 }
 
-function exec(ctx) {
-  const { pos, f, resto } = parseArgs(ctx.args);
+const SHELLS = ['sh', 'bash', '/bin/sh', '/bin/bash', '/usr/bin/sh', '/usr/bin/bash'];
+
+// `oc exec` e `oc rsh`: executa um comando no contêiner ou abre um shell nele.
+async function exec(ctx, rsh = false) {
+  const { pos, f, resto } = parseArgs(ctx.args, ['T', 'quiet', 'q']);
   const c = ctx.env.cluster;
-  const { pod } = achaPod(ctx, pos[0], nsDe(ctx, f));
-  const cmd = resto || pos.slice(1);
-  if (!cmd.length) throw naoSimulado(ctx, ctx.env.t('sessão interativa dentro do pod (informe um comando após --)', 'interactive session inside the pod (pass a command after --)'));
+  const { pod } = achaPod(ctx, pos[0], nsDe(ctx, f), rsh ? 'rsh' : 'exec');
   const nomeCt = f.one('container') || pod.spec.containers[0].name;
   const ct = pod.spec.containers.find((x) => x.name === nomeCt);
+  if (!ct) throw erro(`error: container ${nomeCt} not found in pod ${pod.metadata.name}`);
   const estado = pod.status.containerStatuses?.find((x) => x.name === nomeCt);
-  if (!ct || !estado?.state.running) throw erro(`error: unable to upgrade connection: container not found ("${nomeCt}")`);
-  const { env } = resolveEnv(c, pod, ct);
-  const tudo = { HOSTNAME: pod.metadata.name, HOME: '/opt/app-root/src', KUBERNETES_SERVICE_HOST: '172.30.0.1', KUBERNETES_SERVICE_PORT: '443', ...env };
-  if (cmd[0] === 'env' || (cmd[0] === 'printenv' && cmd.length === 1)) return ok(Object.entries(tudo).map(([k, v]) => `${k}=${v}\n`).join(''));
-  if (cmd[0] === 'printenv') return cmd[1] in tudo ? ok(tudo[cmd[1]] + '\n') : { code: 1 };
-  if (cmd[0] === 'hostname') return ok(pod.metadata.name + '\n');
-  if ((cmd[0] === 'cat' || cmd[0] === 'ls') && cmd[1]) {
-    for (const m of ct.volumeMounts || []) {
-      const base = m.mountPath.replace(/\/$/, '');
-      if (cmd[1] !== base && !cmd[1].startsWith(base + '/')) continue;
-      const v = (pod.spec.volumes || []).find((x) => x.name === m.name);
-      const fonte = v?.configMap ? c.get('ConfigMap', v.configMap.name, pod.metadata.namespace) : v?.secret ? c.get('Secret', v.secret.secretName, pod.metadata.namespace) : null;
-      if (!fonte) break;
-      const dados = Object.fromEntries(Object.entries(fonte.data || {}).map(([k, val]) => [k, fonte.kind === 'Secret' ? b64.dec(val) : val]));
-      const chave = cmd[1].slice(base.length + 1).replace(/\/$/, '');
-      if (cmd[0] === 'ls' && !chave) return ok(Object.keys(dados).join('\n') + '\n');
-      if (chave in dados) return ok(cmd[0] === 'ls' ? cmd[1] + '\n' : dados[chave]);
-      return { err: `${cmd[0]}: ${cmd[1]}: No such file or directory\n`, code: 1 };
-    }
+  if (!estado?.state.running) {
+    if (pod.status.phase === 'Succeeded' || pod.status.phase === 'Failed') throw erro(`error: cannot exec into a container in a completed pod; current phase is ${pod.status.phase}`);
+    throw erro(`error: unable to upgrade connection: container not found ("${nomeCt}")`);
   }
-  throw naoSimulado(ctx, `oc exec ... -- ${cmd.join(' ')}`);
+  let cmd = resto || pos.slice(1);
+  if (rsh && !cmd.length) cmd = [String(f.one('shell') || '/bin/sh')];
+  if (!cmd.length) throw erro("error: you must specify at least one command for the container\nSee 'oc exec -h' for help and examples");
+  const it = rsh ? !f.has('T') : (f.has('it') || f.has('ti') || (f.has('stdin') && f.has('tty')) || (f.has('i') && f.has('t')));
+  const soShell = cmd.length === 1 && SHELLS.includes(cmd[0]);
+  const shell = cmd[0].includes('bash') ? 'bash' : 'sh';
+  const contexto = contextoPod(ctx.env, pod, ct, shell);
+
+  if (soShell && it) {
+    ctx.sh.entraPod(contexto);
+    return ok();
+  }
+  let r;
+  if (soShell) {
+    // Sem terminal, o shell lê a entrada padrão e termina.
+    const script = f.has('stdin') || f.has('i') ? ctx.stdin : '';
+    r = script ? await ctx.sh.noPod(contexto, () => ctx.sh.run(script, { sub: true })) : { out: '', code: 0 };
+  } else {
+    r = await ctx.sh.noPod(contexto, () => ctx.sh.exec(cmd, ctx.stdin));
+  }
+  return { out: r.out || '', err: r.err || '', fim: r.code ? `command terminated with exit code ${r.code}\n` : '', code: r.code || 0 };
 }
 
 async function wait(ctx) {
@@ -947,7 +1111,8 @@ async function wait(ctx) {
   if (!para) throw erro('error: --for is required');
   const limite = parseInt(f.one('timeout') ?? '30', 10);
   const m = para.match(/^condition=([^=]+)(?:=(.*))?$/i);
-  if (!m && para !== 'delete') throw naoSimulado(ctx, `oc wait --for=${para}`);
+  const jp = para.match(/^jsonpath=(\{.*\})(?:=(.*))?$/);
+  if (!m && !jp && para !== 'delete') throw erro(`error: unrecognized condition: "${para}"`);
   let out = '';
   for (let t = 0; t <= limite; t++) {
     let grupos;
@@ -962,7 +1127,14 @@ async function wait(ctx) {
       if (!itens.length) return ok(out);
     } else {
       if (!itens.length) throw erro('error: no matching resources found');
-      const pendentes = itens.filter(({ o }) => !(o.status?.conditions || []).some((x) => x.type.toLowerCase() === m[1].toLowerCase() && x.status.toLowerCase() === (m[2] || 'true').toLowerCase()));
+      const atende = (o) => {
+        if (jp) {
+          const v = evalPath(jp[1].slice(1, -1), ordena(clone(o)));
+          return jp[2] === undefined ? v.length > 0 : v.some((x) => String(x) === jp[2]);
+        }
+        return (o.status?.conditions || []).some((x) => x.type.toLowerCase() === m[1].toLowerCase() && x.status.toLowerCase() === (m[2] || 'true').toLowerCase());
+      };
+      const pendentes = itens.filter(({ o }) => !atende(o));
       if (!pendentes.length) return ok(itens.map(({ o, k }) => `${k.out}/${o.metadata.name} condition met\n`).join(''));
       if (t === limite) return { err: pendentes.map(({ o, k }) => `error: timed out waiting for the condition on ${k.plural}/${o.metadata.name}\n`).join(''), code: 1 };
     }
@@ -1104,10 +1276,22 @@ export function skopeo(ctx) {
   return ok(JSON.stringify({ Name: a.image.repo, Digest: a.digest, RepoTags: Object.keys(a.image.tags), Created: '2026-10-20T09:14:02Z', DockerVersion: '', Labels: { version: a.tag }, Architecture: 'amd64', Os: 'linux', Layers: [0, 1, 2, 3].map((n) => `sha256:${hashNum(a.digest + n).toString(16).padStart(8, '0').repeat(8)}`), Env: [`APP_VERSION=${a.tag}`] }, null, 4) + '\n');
 }
 
+function explain(ctx) {
+  const { pos, f } = parseArgs(ctx.args);
+  if (!pos[0]) throw erro('error: You must specify the type of resource to explain. Use "oc api-resources" for a complete list of supported resources.');
+  const r = explica(pos[0], f.has('recursive'));
+  if (r.erro?.startsWith('[simulador]')) throw naoSimulado(ctx, `oc explain ${pos[0]}`);
+  if (r.erro) throw erro(r.erro);
+  return ok(r.out);
+}
+
+// Todos os subcomandos do oc real, para separar "não simulado" de "não existe".
+const OC_REAIS = ['adm', 'annotate', 'api-resources', 'api-versions', 'apply', 'attach', 'auth', 'autoscale', 'cancel-build', 'cluster-info', 'completion', 'config', 'cp', 'create', 'debug', 'delete', 'describe', 'diff', 'edit', 'events', 'exec', 'explain', 'expose', 'extract', 'get', 'idle', 'image', 'import-image', 'kustomize', 'label', 'login', 'logout', 'logs', 'new-app', 'new-build', 'new-project', 'observe', 'options', 'patch', 'plugin', 'policy', 'port-forward', 'process', 'project', 'projects', 'proxy', 'registry', 'replace', 'rollback', 'rollout', 'rsh', 'rsync', 'run', 'scale', 'secrets', 'set', 'start-build', 'status', 'tag', 'version', 'wait', 'whoami'];
+
 const SUBS = {
   get, describe, apply, create, delete: del, 'new-project': newProject, project, projects, login, whoami,
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
-  patch, edit, rollout, logs, exec, rsh: exec, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
+  patch, edit, rollout, logs, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
   'cluster-info': () => ok(`Kubernetes control plane is running at ${SERVER}\n\nTo further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.\n`),
   events: (ctx) => get({ ...ctx, args: ['events', ...ctx.args] }),
   logout: (ctx) => ok(`Logged "${ctx.env.session.user}" out on "${SERVER}"\n`),
@@ -1115,12 +1299,20 @@ const SUBS = {
 
 export async function oc(ctx) {
   const [sub, ...resto] = ctx.args;
-  if (!sub || sub === '--help' || sub === '-h' || sub === 'help') {
-    return ok(ctx.env.t('Subcomandos do oc simulados até agora:\n  ', 'oc subcommands simulated so far:\n  ') + Object.keys(SUBS).sort().join(', ') + '\n');
-  }
+  if (!sub || sub === '--help' || sub === '-h') return ok(ajuda([]));
+  if (sub === 'help') return ok(ajuda(resto) || ajuda([]));
   const fn = SUBS[sub];
-  if (!fn) throw naoSimulado(ctx, `oc ${sub}`);
-  if (resto.includes('--help') || resto.includes('-h')) throw naoSimulado(ctx, `oc ${sub} --help`);
+  if (!fn) {
+    if (OC_REAIS.includes(sub)) throw naoSimulado(ctx, `oc ${sub}`);
+    throw erro(`error: unknown command "${sub}" for "oc"\nRun 'oc --help' for usage.`);
+  }
+  // Ajuda só vale para as opções antes do `--`.
+  const antes = resto.includes('--') ? resto.slice(0, resto.indexOf('--')) : resto;
+  if (antes.includes('--help') || antes.includes('-h')) {
+    const texto = ajuda([sub, ...antes]);
+    if (texto) return ok(texto);
+    throw naoSimulado(ctx, `oc ${sub} --help`);
+  }
   return fn({ ...ctx, args: resto });
 }
 

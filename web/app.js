@@ -102,6 +102,7 @@ function opcoesDoMundo() {
     lang: progress.lang,
     openEditor: abreEditor,
     write: (txt) => term.write(txt),
+    ask: (texto, secreto) => term.ask(texto, secreto),
     // No navegador a espera é em tempo real e pode ser interrompida com Ctrl+C.
     sleep: (s) => new Promise((resolve, reject) => {
       const t = setTimeout(() => {

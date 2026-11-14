@@ -51,19 +51,23 @@ export function tipoOuErro(t) {
 }
 
 // Interpreta `pods`, `pod x y`, `pod/x svc/y`, `deploy,svc` e `all`.
+// `oc get pod pod/x`: o tipo foi informado duas vezes.
+const tipoRepetido = (verbo) => erro(`error: there is no need to specify a resource type as a separate argument when passing arguments in resource/name form (e.g. 'oc ${verbo} resource/<resource_name>' instead of 'oc ${verbo} resource resource/<resource_name>'`);
+
 export function alvos(pos, verbo = 'get') {
   if (!pos.length) throw erro(`error: You must specify the type of resource to ${verbo}. Use "oc api-resources" for a complete list of supported resources.`);
   if (pos[0].includes('/')) {
     const mapa = new Map();
     for (const p of pos) {
       const i = p.indexOf('/');
-      if (i < 0) throw erro('error: there is no need to specify a resource type as a separate argument when passing arguments in resource/name form (e.g. \'oc get resource/<resource_name>\' instead of \'oc get resource resource/<resource_name>\'');
+      if (i < 0) throw tipoRepetido(verbo);
       const k = tipoOuErro(p.slice(0, i));
       if (!mapa.has(k)) mapa.set(k, []);
       mapa.get(k).push(p.slice(i + 1));
     }
     return [...mapa].map(([k, nomes]) => ({ k, nomes }));
   }
+  if (pos.slice(1).some((p) => p.includes('/'))) throw tipoRepetido(verbo);
   const tipos = pos[0].split(',').flatMap((t) => (t === 'all' ? ALL : [t])).map(tipoOuErro);
   return tipos.map((k) => ({ k, nomes: pos.slice(1) }));
 }
@@ -76,6 +80,7 @@ export function umAlvo(pos, verbo) {
     return { k: tipoOuErro(pos[0].slice(0, i)), nome: pos[0].slice(i + 1), resto: pos.slice(1) };
   }
   if (pos.length < 2) throw erro('error: resource(s) were provided, but no name was specified');
+  if (pos[1].includes('/')) throw tipoRepetido(verbo);
   return { k: tipoOuErro(pos[0]), nome: pos[1], resto: pos.slice(2) };
 }
 

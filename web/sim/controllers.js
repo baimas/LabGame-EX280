@@ -25,6 +25,8 @@ function deployments(c) {
     const meus = c.list('ReplicaSet', ns).filter((r) => donoDe(r, d));
     const maior = Math.max(0, ...meus.map(rev));
     let atual = meus.find((r) => r.metadata.labels?.['pod-template-hash'] === hash);
+    // Deployment pausado: mudanças no template esperam o `oc rollout resume`.
+    if (!atual && d.spec.paused && meus.length) atual = meus.reduce((a, b) => (rev(b) > rev(a) ? b : a));
     if (!atual) {
       const tpl = clone(d.spec.template);
       tpl.metadata ??= {};

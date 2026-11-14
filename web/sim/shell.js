@@ -4,11 +4,20 @@ import { HOME } from './fs.js';
 import { ApiError } from './cluster.js';
 import { builtins } from './builtins.js';
 import { oc, skopeo } from './oc/index.js';
+import { curl } from './curl.js';
 
 const OPS = ['2>&1', '&&', '||', '>>', '2>', '|', ';', '>', '<'];
 const MARCA = '\u0001';
 
 export class Abort extends Error {}
+
+// `exit` dentro de um `oc exec` não interativo encerra o script.
+class SaidaPod extends Error {
+  constructor(code) {
+    super('exit');
+    this.code = code;
+  }
+}
 
 function extraiHeredocs(src) {
   const linhas = src.split('\n');
@@ -45,10 +54,67 @@ export class Shell {
     this.cwd = HOME;
     this.vars = { HOME, USER: 'student', HOSTNAME: 'workstation', '?': '0' };
     this.history = [];
-    this.cmds = { ...builtins, oc, kubectl: oc, skopeo };
+    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl };
+    this.pod = null; // contexto do contêiner quando se está dentro de `oc rsh`
+    this.salvo = null;
+  }
+
+  // Entra no shell de um contêiner; `exit` volta para a estação de trabalho.
+  entraPod(contexto) {
+    this.salvo = { cwd: this.cwd, vars: this.vars, cmds: this.cmds };
+    this.pod = contexto;
+    this.cwd = contexto.cwd;
+    this.vars = contexto.vars;
+    this.cmds = contexto.cmds;
+  }
+
+  saiPod(code = 0) {
+    if (!this.pod) return;
+    if (this.pod.naoInterativo) throw new SaidaPod(code);
+    Object.assign(this, this.salvo);
+    this.pod = null;
+    this.salvo = null;
+    this.vars['?'] = String(code);
+    this.env.write?.(code ? `exit\ncommand terminated with exit code ${code}\n` : 'exit\n');
+  }
+
+  // Executa `fn` dentro do contêiner e volta ao estado anterior.
+  async noPod(contexto, fn) {
+    const antes = { pod: this.pod, salvo: this.salvo, cwd: this.cwd, vars: this.vars, cmds: this.cmds };
+    this.entraPod({ ...contexto, naoInterativo: true });
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof SaidaPod) return { out: e.out || '', code: e.code };
+      throw e;
+    } finally {
+      Object.assign(this, antes);
+    }
+  }
+
+  // Diretório da estação de trabalho, mesmo com uma sessão no pod aberta.
+  cwdEstacao() {
+    return this.salvo ? this.salvo.cwd : this.cwd;
+  }
+
+  envAtual() {
+    return this.pod ? this.pod.env : this.env;
+  }
+
+  // Se o pod sumiu ou parou, a sessão remota cai.
+  verificaPod() {
+    if (!this.pod || this.pod.naoInterativo) return null;
+    const p = this.env.cluster.get('Pod', this.pod.nome, this.pod.ns);
+    const vivo = p && p.metadata.uid === this.pod.pod.metadata.uid && p.status.containerStatuses?.find((x) => x.name === this.pod.container)?.state.running;
+    if (vivo) return null;
+    Object.assign(this, this.salvo);
+    this.pod = null;
+    this.salvo = null;
+    return { out: 'command terminated with exit code 137\n', code: 137 };
   }
 
   prompt() {
+    if (this.pod) return `${this.pod.shell}-5.1$ `;
     const dir = this.cwd === HOME ? '~' : this.cwd.split('/').pop() || '/';
     return `[student@workstation ${dir}]$ `;
   }
@@ -166,6 +232,10 @@ export class Shell {
   }
 
   async run(fonte, { sub = false } = {}) {
+    if (!sub) {
+      const caiu = this.verificaPod();
+      if (caiu) return caiu;
+    }
     const h = extraiHeredocs(fonte);
     if (h.incompleto) return { out: 'bash: unexpected end of file\n', code: 2 };
     let toks;
@@ -220,7 +290,14 @@ export class Shell {
     for (const p of lista) {
       if (p.conector === '&&' && code !== 0) continue;
       if (p.conector === '||' && code === 0) continue;
-      const r = await this.pipeline(p.cmds);
+      let r;
+      try {
+        r = await this.pipeline(p.cmds);
+      } catch (e) {
+        // `exit` dentro do pod: preserva o que já foi impresso.
+        if (e instanceof SaidaPod) e.out = out + (e.out || '');
+        throw e;
+      }
       // No terminal, cada comando da lista aparece assim que termina.
       if (!sub && this.env.write) this.env.write(r.out);
       else out += r.out;
@@ -232,9 +309,10 @@ export class Shell {
 
   grava(arq, texto, anexa) {
     if (arq === '/dev/null') return null;
-    const caminho = this.env.fs.resolve(this.cwd, arq);
+    const fs = this.envAtual().fs;
+    const caminho = fs.resolve(this.cwd, arq);
     try {
-      this.env.fs.write(caminho, (anexa && this.env.fs.isFile(caminho) ? this.env.fs.read(caminho) : '') + texto);
+      fs.write(caminho, (anexa && fs.isFile(caminho) ? fs.read(caminho) : '') + texto);
       return null;
     } catch (e) {
       return `bash: ${arq}: ${e.message}\n`;
@@ -250,7 +328,7 @@ export class Shell {
       if (cmd.stdin !== undefined) stdin = cmd.stdin;
       if (cmd.entrada) {
         try {
-          stdin = this.env.fs.read(this.env.fs.resolve(this.cwd, cmd.entrada));
+          stdin = this.envAtual().fs.read(this.envAtual().fs.resolve(this.cwd, cmd.entrada));
         } catch (e) {
           combinado += `bash: ${cmd.entrada}: ${e.message}\n`;
           code = 1;
@@ -260,15 +338,19 @@ export class Shell {
       }
       const r = await this.exec(cmd.argv, stdin);
       let saida = r.out || '';
+      // `fim` é saída de erro emitida depois da saída normal (ex.: "command terminated").
       let erro = r.err || '';
+      let erroFim = r.fim || '';
       code = r.code || 0;
       if (cmd.junta) {
-        saida = erro + saida;
+        saida = erro + saida + erroFim;
         erro = '';
+        erroFim = '';
       }
       if (cmd.erro !== undefined) {
-        const falha = this.grava(cmd.erro, erro, false);
+        const falha = this.grava(cmd.erro, erro + erroFim, false);
         erro = falha || '';
+        erroFim = '';
       }
       if (cmd.saida) {
         const falha = this.grava(cmd.saida.arq, saida, cmd.saida.anexa);
@@ -281,6 +363,7 @@ export class Shell {
       combinado += erro;
       if (i === cmds.length - 1) combinado += saida;
       else stdin = saida;
+      combinado += erroFim;
     }
     return { out: combinado, code };
   }
@@ -293,14 +376,16 @@ export class Shell {
       argv = argv.slice(1);
     }
     if (!argv.length) return { code: 0 };
-    const fn = this.cmds[argv[0]];
-    if (!fn) return { err: `bash: ${argv[0]}: command not found\n`, code: 127 };
+    // Dentro do contêiner, /bin/ls e /usr/bin/ls são o mesmo `ls`.
+    const nome = this.pod ? argv[0].replace(/^(\/usr)?\/s?bin\//, '') : argv[0];
+    const fn = this.cmds[nome];
+    if (!fn) return { err: `${this.pod ? 'sh' : 'bash'}: ${argv[0]}: command not found\n`, code: 127 };
     try {
-      const r = await fn({ args: argv.slice(1), stdin, sh: this, env: this.env, nome: argv[0] });
+      const r = await fn({ args: argv.slice(1), stdin, sh: this, env: this.envAtual(), nome });
       if (typeof r === 'string') return { out: r, code: 0 };
       return r || { code: 0 };
     } catch (e) {
-      if (e instanceof Abort) throw e;
+      if (e instanceof Abort || e instanceof SaidaPod) throw e;
       if (e instanceof ApiError) return { err: e.message + '\n', code: 1 };
       console.error(e);
       return { err: `[simulador] erro interno em "${argv[0]}": ${e.message}\n`, code: 70 };

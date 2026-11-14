@@ -29,7 +29,12 @@ export function seed(c) {
   c.ocupado = true;
   c.now = agora - 30 * 86400;
 
-  for (const nome of NAMESPACES) c.create({ kind: 'Namespace', metadata: { name: nome } });
+  // Labels que as network policies usam para liberar o tráfego do roteador e do monitoramento.
+  const ROTULOS = {
+    'openshift-ingress': { 'network.openshift.io/policy-group': 'ingress', 'policy-group.network.openshift.io/ingress': '' },
+    'openshift-monitoring': { 'network.openshift.io/policy-group': 'monitoring', 'policy-group.network.openshift.io/monitoring': '' },
+  };
+  for (const nome of NAMESPACES) c.create({ kind: 'Namespace', metadata: { name: nome, labels: ROTULOS[nome] } });
 
   c.create({
     kind: 'Node',
