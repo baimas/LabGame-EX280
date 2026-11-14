@@ -1,5 +1,7 @@
 # LabGame EX280
 
+*[Read in English](README.en.md)*
+
 Labs gamificados para estudar para a prova **Red Hat EX280** (Red Hat Certified OpenShift
 Administrator). Você é o administrador OpenShift de uma empresa fictícia e resolve chamados
 no formato dos labs da Red Hat: uma especificação do que precisa estar pronto, um terminal
@@ -8,7 +10,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Os 10 capítulos estão jogáveis; falta o modo prova. Veja [Estado atual](#estado-atual).
+> Os 10 capítulos e o modo prova estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -39,6 +41,9 @@ Abra http://localhost:8280 no navegador.
 4. Cada dica custa parte do XP. A solução comentada fica disponível depois da primeira
    correção, e cada passo pode ser executado direto no terminal.
 
+Quando estiver confiante, faça um **simulado** no topo da lista: 3 horas, nota de 0 a 300
+e corte em 210.
+
 O botão no canto superior alterna entre português e inglês. A prova é aplicada em inglês,
 então vale treinar a leitura dos enunciados nesse idioma. O progresso fica salvo no
 navegador.
@@ -58,7 +63,17 @@ navegador.
 | 8. Segurança de aplicações | Service accounts, SCC, jobs, cron jobs | 4 missões |
 | 9. Updates | Atualização do cluster e de operators | 4 missões |
 
-Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e sem dicas.
+### Modo prova
+
+Dois simulados (A e B), de 15 tarefas cada, cobrindo todos os domínios num cluster só:
+
+- 3 horas de cronômetro; quando o tempo acaba, a prova é entregue sozinha.
+- Sem dicas, sem solução e sem `lab grade`: a correção acontece só na entrega.
+- Nota de 0 a 300, com aprovação a partir de 210, como na EX280, e um relatório por
+  domínio e por tarefa.
+
+As tarefas dos simulados vêm das missões dos capítulos. Para treinar a prova de verdade,
+faça um simulado antes de jogar as missões que ele usa, ou guarde-o para o fim.
 
 ### Missões disponíveis
 
@@ -177,6 +192,11 @@ npm test
 Encontrou um comando que se comporta diferente do OpenShift real, ou quer propor uma missão?
 Abra uma issue. Missões novas seguem o formato dos arquivos em `web/missions/` e precisam
 passar no `npm test`.
+
+## Licença
+
+[MIT](LICENSE). As bibliotecas embutidas em `web/vendor/` (xterm.js e js-yaml) mantêm as
+suas próprias licenças MIT.
 
 ## Aviso
 

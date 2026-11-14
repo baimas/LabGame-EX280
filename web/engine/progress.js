@@ -40,11 +40,24 @@ export const progress = {
     this.data.missions[id] = m;
     this.save();
   },
+  // Simulados: melhor nota e número de tentativas.
+  ofExam(id) {
+    return this.data.exames?.[id] || { melhor: 0, tentativas: 0, passou: false };
+  },
+  recordExam(id, nota, passou) {
+    const e = this.ofExam(id);
+    e.tentativas++;
+    e.melhor = Math.max(e.melhor, nota);
+    e.passou = e.passou || passou;
+    e.ultima = nota;
+    (this.data.exames ??= {})[id] = e;
+    this.save();
+  },
   totalXp() {
     return Object.values(this.data.missions).reduce((n, m) => n + m.xp, 0);
   },
   reset() {
-    this.data = { lang: this.data.lang, missions: {} };
+    this.data = { lang: this.data.lang, missions: {}, exames: {} };
     this.save();
     grava(CHAVE_SESSAO, null);
   },

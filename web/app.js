@@ -1,5 +1,6 @@
 // Interface do jogo: lista de missões, chamado, terminal, editor e correção.
-import { CHAPTERS, MISSIONS, byId, objective } from './missions/index.js';
+import { CHAPTERS, MISSIONS, EXAMS, byId, chapterOf, objective } from './missions/index.js';
+import { notaDoExame, CORTE, NOTA_MAXIMA } from './missions/exames.js';
 import { startMission, grade, score, level, HINT_COST } from './engine/game.js';
 import { createWorld } from './engine/world.js';
 import { progress } from './engine/progress.js';
@@ -23,8 +24,13 @@ const TEXTOS = {
       'O cluster é simulado dentro do navegador. Não há nada para instalar e nada sai da sua máquina.',
     ],
     regras: ['Escolha uma missão à esquerda e clique em Iniciar: o ambiente é preparado como no `lab start`.', 'Resolva no terminal com `oc`. Tab completa comandos, tipos e nomes de recursos; `vi arquivo` abre o editor.', 'Clique em Corrigir (ou rode `lab grade`) para ver item a item o que passou.', 'Dicas custam XP. A solução comentada fica disponível depois da primeira correção.'],
-    limite: 'Simulador não é cluster: ele cobre os comandos e regras que a prova cobra, e avisa quando um comando ainda não é simulado. Os capítulos seguintes estão em construção.',
+    limite: 'Simulador não é cluster: ele cobre os comandos e regras que a prova cobra, e avisa quando um comando ainda não é simulado. Quando estiver confiante, faça um simulado no modo prova.',
     nota: 'Nota', xp: 'XP', de: 'de', melhor: 'melhor resultado',
+    modoProva: 'Modo prova', provaDesc: '3 horas · todos os domínios · sem dicas', iniciarProva: 'Começar prova', entregar: 'Entregar prova', abandonar: 'Abandonar',
+    confirmaEntregar: 'Entregar a prova agora? Depois disso a nota é calculada e não dá mais para mexer.', confirmaAbandonar: 'Abandonar a prova? Nada será corrigido.',
+    regrasProva: ['Todas as tarefas rodam no mesmo cluster. Faça na ordem que quiser.', 'Não há dicas, solução nem `lab grade`: a correção só acontece na entrega.', 'Quando o tempo acabar, a prova é entregue sozinha.', `Nota de 0 a ${NOTA_MAXIMA}; aprovação a partir de ${CORTE}, como na EX280.`, 'As configurações precisam estar valendo no fim: o que só existe em arquivo não conta.'],
+    tarefa: 'Tarefa', restante: 'restante', aprovadoProva: 'Aprovado', reprovadoProva: 'Reprovado', porDominio: 'Desempenho por domínio', porTarefa: 'Tarefas',
+    semGrade: 'lab grade não está disponível no modo prova. Entregue a prova para ver a nota.\n', melhorNota: 'melhor nota', tempoEsgotado: 'Tempo esgotado: a prova foi entregue.', refazer: 'Fazer de novo', corte: 'aprovação a partir de',
   },
   en: {
     subtitulo: 'Simulated OpenShift to practice for the exam', idioma: 'Português', iniciar: 'Start mission (lab start)', reiniciar: 'Restart', corrigir: 'Grade (lab grade)',
@@ -42,8 +48,13 @@ const TEXTOS = {
       'The cluster is simulated inside the browser. There is nothing to install and nothing leaves your machine.',
     ],
     regras: ['Pick a mission on the left and click Start: the environment is prepared as with `lab start`.', 'Solve it in the terminal with `oc`. Tab completes commands, resource types, and names; `vi file` opens the editor.', 'Click Grade (or run `lab grade`) to see item by item what passed.', 'Hints cost XP. The commented solution becomes available after the first grading.'],
-    limite: 'A simulator is not a cluster: it covers the commands and rules the exam asks for, and tells you when a command is not simulated yet. The following chapters are under construction.',
+    limite: 'A simulator is not a cluster: it covers the commands and rules the exam asks for, and tells you when a command is not simulated yet. When you feel ready, take a practice exam in exam mode.',
     nota: 'Score', xp: 'XP', de: 'of', melhor: 'best result',
+    modoProva: 'Exam mode', provaDesc: '3 hours · every domain · no hints', iniciarProva: 'Start exam', entregar: 'Submit exam', abandonar: 'Abandon',
+    confirmaEntregar: 'Submit the exam now? The score is calculated and nothing else can be changed.', confirmaAbandonar: 'Abandon the exam? Nothing will be graded.',
+    regrasProva: ['Every task runs on the same cluster. Work in any order you like.', 'There are no hints, solution, or `lab grade`: grading only happens when you submit.', 'When time runs out, the exam is submitted automatically.', `Score from 0 to ${NOTA_MAXIMA}; passing from ${CORTE}, as in the EX280.`, 'Configuration must be in effect at the end: what only exists in a file does not count.'],
+    tarefa: 'Task', restante: 'left', aprovadoProva: 'Passed', reprovadoProva: 'Failed', porDominio: 'Performance by domain', porTarefa: 'Tasks',
+    semGrade: 'lab grade is not available in exam mode. Submit the exam to see your score.\n', melhorNota: 'best score', tempoEsgotado: 'Time is up: the exam was submitted.', refazer: 'Take it again', corte: 'passing from',
   },
 };
 
@@ -122,6 +133,7 @@ function opcoesDoMundo() {
 function ligaLab(a) {
   a.world.env.lab = async (args) => {
     if (args[0] !== 'grade') return { err: 'usage: lab grade\n', code: 1 };
+    if (a.missao.exam) return { err: T().semGrade, code: 1 };
     const r = await corrigir();
     const pontos = (txt) => '.'.repeat(Math.max(3, 74 - txt.length));
     let out = `\nGrading the student's work for ${a.missao.id}:\n\n`;
@@ -132,11 +144,11 @@ function ligaLab(a) {
 
 function salvaSessao() {
   if (!ativa) return progress.saveSession(null);
-  progress.saveSession({ id: ativa.missao.id, mundo: ativa.world.serialize(), dicas: ativa.dicas, tentativas: ativa.tentativas, viuSolucao: ativa.viuSolucao, segundos: ativa.segundos, resultado: ativa.resultado, historico: ativa.world.shell.history.slice(-200) });
+  progress.saveSession({ id: ativa.missao.id, mundo: ativa.world.serialize(), dicas: ativa.dicas, tentativas: ativa.tentativas, viuSolucao: ativa.viuSolucao, segundos: ativa.segundos, resultado: ativa.resultado, entregue: ativa.entregue, historico: ativa.world.shell.history.slice(-200) });
 }
 
 async function iniciar(missao) {
-  if (ativa && ativa.missao.id !== missao.id && !confirm(T().trocar)) return;
+  if (ativa && ativa.missao.id !== missao.id && !ativa.entregue && !confirm(T().trocar)) return;
   const world = await startMission(missao, opcoesDoMundo());
   ativa = { missao, world, dicas: 0, tentativas: 0, viuSolucao: false, segundos: 0, resultado: null };
   ligaLab(ativa);
@@ -153,10 +165,11 @@ function retomar() {
   try {
     const world = createWorld({ ...opcoesDoMundo(), salvo: s.mundo });
     world.shell.history.push(...(s.historico || []));
-    ativa = { missao, world, dicas: s.dicas, tentativas: s.tentativas, viuSolucao: s.viuSolucao, segundos: s.segundos, resultado: s.resultado };
+    ativa = { missao, world, dicas: s.dicas, tentativas: s.tentativas, viuSolucao: s.viuSolucao, segundos: s.segundos, resultado: s.resultado, entregue: s.entregue };
     ligaLab(ativa);
     selecionada = missao;
-    term.attach(world, T().retomado(missao.id));
+    if (ativa.entregue) term.detach('');
+    else term.attach(world, T().retomado(missao.id));
   } catch (e) {
     console.error(e);
     progress.saveSession(null);
@@ -168,6 +181,20 @@ function encerrar() {
   salvaSessao();
   term.detach(T().terminalParado);
   desenha();
+}
+
+async function entregar() {
+  const a = ativa;
+  if (!a || a.entregue) return;
+  const resultado = await grade(a.missao, a.world);
+  a.relatorio = notaDoExame(a.missao, resultado, chapterOf);
+  a.resultado = { resultado, exame: { nota: a.relatorio.nota, passou: a.relatorio.passou, porParte: a.relatorio.porParte.map(({ id, ok, total }) => ({ id, ok, total })), dominios: a.relatorio.dominios.map((d) => ({ id: d.capitulo.id, pct: d.pct })) } };
+  a.entregue = true;
+  progress.recordExam(a.missao.id, a.relatorio.nota, a.relatorio.passou);
+  salvaSessao();
+  term.detach('');
+  desenha();
+  $('chamado').scrollTop = 0;
 }
 
 async function corrigir() {
@@ -202,7 +229,13 @@ function desenhaTopo() {
 
 function desenhaLista() {
   const t = T();
-  let html = '';
+  let html = `<div class="capitulo"><h2><span>◆ ${t.modoProva}</span><span></span></h2><p>${t.provaDesc}</p></div>`;
+  for (const ex of EXAMS) {
+    const p = progress.ofExam(ex.id);
+    const classes = ['missao', 'prova', p.passou ? 'feita' : '', selecionada?.id === ex.id ? 'atual' : ''].join(' ');
+    const marca = p.passou ? '✓' : ativa?.missao.id === ex.id && !ativa.entregue ? '▸' : '○';
+    html += `<button type="button" class="${classes}" data-id="${ex.id}"><span class="estado">${marca}</span><span class="nome">${esc(ex.title[L()])}</span><span class="xp">${p.tentativas ? `${p.melhor}/${NOTA_MAXIMA}` : '180 min'}</span></button>`;
+  }
   for (const cap of CHAPTERS) {
     const feitas = cap.missions.filter((m) => progress.of(m.id).done).length;
     html += `<div class="capitulo${cap.missions.length ? '' : ' vazio'}"><h2><span>${esc(cap.id.slice(1))} · ${esc(cap.title[L()])}</span><span>${cap.missions.length ? `${feitas}/${cap.missions.length}` : ''}</span></h2><p>${esc(cap.domain[L()])}</p></div>`;
@@ -226,6 +259,7 @@ function desenhaChamado() {
     el.innerHTML = `<div class="boas-vindas"><h1>${t.bemVindo}</h1>${t.intro.map((p) => `<p>${rico(p)}</p>`).join('')}<ul>${t.regras.map((r) => `<li>${rico(r)}</li>`).join('')}</ul><p class="aviso">${rico(t.limite)}</p></div>`;
     return;
   }
+  if (m.exam) return desenhaProva(el, m);
   const emCurso = ativa?.missao.id === m.id ? ativa : null;
   const p = progress.of(m.id);
   let html = `<h1>${esc(m.title[L()])}</h1>`;
@@ -251,6 +285,35 @@ function desenhaChamado() {
   el.innerHTML = html;
 }
 
+function desenhaProva(el, m) {
+  const t = T();
+  const emCurso = ativa?.missao.id === m.id ? ativa : null;
+  const p = progress.ofExam(m.id);
+  let html = `<h1>${esc(m.title[L()])}</h1>`;
+  html += `<div class="meta"><span>${t.tempo}: <b>180 ${t.min}</b></span><span>${t.tarefa}s: <b>${m.partes.length}</b></span><span>${t.nota}: <b>0–${NOTA_MAXIMA}</b>, ${t.corte} ${CORTE}</span>${p.tentativas ? `<span>${t.melhorNota}: <b>${p.melhor}</b></span>` : ''}</div>`;
+  html += `<p class="historia">${rico(m.story[L()])}</p>`;
+  if (emCurso?.entregue && emCurso.resultado?.exame) {
+    const r = emCurso.resultado.exame;
+    html += `<div class="placar ${r.passou ? 'ok' : 'falha'}">${r.passou ? t.aprovadoProva : t.reprovadoProva} · ${t.nota} ${r.nota} / ${NOTA_MAXIMA}</div>`;
+    html += `<h3>${t.porDominio}</h3><ul class="dominios">${r.dominios.map((d) => {
+      const cap = CHAPTERS.find((c) => c.id === d.id);
+      return `<li><span>${esc(cap.title[L()])}</span><span class="barra-dominio"><span style="width:${d.pct}%"></span></span><b>${d.pct}%</b></li>`;
+    }).join('')}</ul>`;
+    html += `<h3>${t.porTarefa}</h3><ul class="resultado">${r.porParte.map((x, i) => `<li class="${x.ok === x.total ? 'ok' : 'falha'}">${t.tarefa} ${i + 1} · ${esc(byId(x.id).title[L()])} — ${x.ok}/${x.total}</li>`).join('')}</ul>`;
+    html += `<div class="botoes"><button type="button" class="primario" data-acao="iniciar">${t.refazer}</button><button type="button" class="fantasma" data-acao="encerrar">${t.encerrar}</button></div>`;
+  } else if (emCurso) {
+    html += `<div class="botoes"><button type="button" class="primario" data-acao="entregar">${t.entregar}</button><button type="button" class="fantasma" data-acao="abandonar">${t.abandonar}</button></div>`;
+  } else {
+    html += `<ul>${t.regrasProva.map((r) => `<li>${rico(r)}</li>`).join('')}</ul><div class="botoes"><button type="button" class="primario" data-acao="iniciar">${t.iniciarProva}</button></div>`;
+  }
+  if (emCurso && !emCurso.entregue) {
+    m.partes.forEach((parte, i) => {
+      html += `<h3>${t.tarefa} ${i + 1} · ${esc(parte.title[L()])}</h3><p class="historia">${rico(parte.story[L()])}</p><ol class="tarefas">${parte.tasks[L()].map((x) => `<li>${rico(x)}</li>`).join('')}</ol>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
 function desenhaRelogio() {
   const r = $('relogio');
   if (!ativa) {
@@ -259,6 +322,14 @@ function desenhaRelogio() {
     return;
   }
   const s = ativa.segundos;
+  if (ativa.missao.exam) {
+    const resta = Math.max(0, ativa.missao.minutes * 60 - s);
+    const hh = Math.floor(resta / 3600);
+    r.textContent = ativa.entregue ? '' : `${hh}:${String(Math.floor((resta % 3600) / 60)).padStart(2, '0')}:${String(resta % 60).padStart(2, '0')} ${T().restante}`;
+    r.classList.toggle('estourou', resta < 900);
+    $('console-titulo').textContent = `student@workstation · ${ativa.missao.title[L()]}`;
+    return;
+  }
   r.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')} / ${ativa.missao.minutes}:00`;
   r.classList.toggle('estourou', s > ativa.missao.minutes * 60);
   $('console-titulo').textContent = `student@workstation · ${ativa.missao.id}`;
@@ -299,6 +370,11 @@ $('chamado').addEventListener('click', async (e) => {
   if (!acao) return;
   if (acao === 'iniciar' || acao === 'reiniciar') await iniciar(selecionada);
   else if (acao === 'encerrar') encerrar();
+  else if (acao === 'entregar') {
+    if (confirm(T().confirmaEntregar)) await entregar();
+  } else if (acao === 'abandonar') {
+    if (confirm(T().confirmaAbandonar)) encerrar();
+  }
   else if (acao === 'corrigir') await corrigir();
   else if (acao === 'dica') {
     ativa.dicas = Math.min(ativa.dicas + 1, ativa.missao.hints.length);
@@ -322,13 +398,16 @@ term.onCommand = () => salvaSessao();
 
 // O relógio do cluster simulado anda em tempo real enquanto há missão ativa.
 setInterval(() => {
-  if (!ativa) return;
+  if (!ativa || ativa.entregue) return;
   // O cluster anda mesmo com a aba oculta, para não travar comandos que esperam.
   ativa.world.cluster.tick(1);
   if (document.hidden) return;
   ativa.segundos++;
   desenhaRelogio();
   if (ativa.segundos % 15 === 0) salvaSessao();
+  if (ativa.missao.exam && ativa.segundos >= ativa.missao.minutes * 60) {
+    entregar().then(() => alert(T().tempoEsgotado));
+  }
 }, 1000);
 
 retomar();

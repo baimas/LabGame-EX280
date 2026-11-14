@@ -46,6 +46,7 @@ import zstream from './c9/zstream.js';
 import minorUp from './c9/minor.js';
 import operadorUp from './c9/operador.js';
 import quizUp from './c9/quiz.js';
+import { SIMULADOS, montaExame } from './exames.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
@@ -61,7 +62,9 @@ export const CHAPTERS = [
 ];
 
 export const MISSIONS = CHAPTERS.flatMap((c) => c.missions.map((m) => ({ ...m, chapter: c.id })));
-export const byId = (id) => MISSIONS.find((m) => m.id === id);
+export const EXAMS = SIMULADOS.map((d) => montaExame(d, MISSIONS));
+export const byId = (id) => MISSIONS.find((m) => m.id === id) || EXAMS.find((m) => m.id === id);
+export const chapterOf = (id) => CHAPTERS.find((c) => c.missions.some((m) => m.id === id));
 
 // Objetivos oficiais citados nas missões, nos dois idiomas.
 const OBJETIVOS_EN = {
