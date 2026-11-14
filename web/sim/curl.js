@@ -1,6 +1,7 @@
 // curl simulado. Na estação de trabalho só alcança o que está fora do
 // cluster (routes, API); dentro de um pod alcança services e pods.
 import { requisicao } from './net.js';
+import { INGRESS_CA, verifica } from './tls.js';
 
 const FRASES = { 200: 'OK', 302: 'Found', 400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found', 503: 'Service Unavailable' };
 
@@ -62,20 +63,22 @@ const ERROS = {
   'tls-versao': () => [35, 'OpenSSL/3.0.7: error:0A00010B:SSL routines::wrong version number'],
 };
 
-// O certificado apresentado é confiável para este cliente?
-function confiavel(ctx, cert, o, noPod) {
-  if (!cert || o.k) return null;
-  if (cert === 'api') return noPod ? 'self-signed certificate in certificate chain' : null;
-  if (cert === 'padrao') return noPod ? 'self-signed certificate in certificate chain' : null;
+// O certificado apresentado é confiável para este cliente? A estação confia
+// na CA do roteador; os pods não confiam em nada além do que for passado.
+function confiavel(ctx, certPem, o, noPod, host) {
+  if (!certPem || o.k) return null;
+  let confiaveis = noPod ? [] : [INGRESS_CA.pem];
   if (o.cacert) {
     try {
-      const pem = ctx.env.fs.read(ctx.env.fs.resolve(ctx.sh.cwd, o.cacert)).trim();
-      if (pem && (pem === (cert.ca || '').trim() || pem === cert.pem.trim())) return null;
+      confiaveis = [ctx.env.fs.read(ctx.env.fs.resolve(ctx.sh.cwd, o.cacert))];
     } catch {
-      return `error setting certificate file: ${o.cacert}`;
+      return { codigo: 77, msg: `error setting certificate file: ${o.cacert}` };
     }
   }
-  return 'unable to get local issuer certificate';
+  const erro = verifica(certPem, confiaveis, host, ctx.env.cluster.now);
+  if (!erro) return null;
+  if (erro.startsWith('no alternative')) return { codigo: 60, msg: `SSL: ${erro}` };
+  return { codigo: 60, msg: `SSL certificate problem: ${erro}` };
 }
 
 export async function curl(ctx) {
@@ -117,10 +120,11 @@ export async function curl(ctx) {
       continue;
     }
     if (u.https) {
-      const problema = confiavel(ctx, r.cert, o, Boolean(noPod));
+      const problema = confiavel(ctx, r.cert, o, Boolean(noPod), u.host);
       if (problema) {
-        if (!o.s || o.S) err += `curl: (60) SSL certificate problem: ${problema}\nMore details here: https://curl.se/docs/sslcerts.html\n\ncurl failed to verify the legitimacy of the server and therefore could not\nestablish a secure connection to it. To learn more about this situation and\nhow to fix it, please visit the web page mentioned above.\n`;
-        code = 60;
+        const extra = problema.codigo === 60 && !problema.msg.startsWith('SSL:') ? '\nMore details here: https://curl.se/docs/sslcerts.html\n\ncurl failed to verify the legitimacy of the server and therefore could not\nestablish a secure connection to it. To learn more about this situation and\nhow to fix it, please visit the web page mentioned above.' : '';
+        if (!o.s || o.S) err += `curl: (${problema.codigo}) ${problema.msg}${extra}\n`;
+        code = problema.codigo;
         continue;
       }
     }

@@ -55,7 +55,7 @@ const COLUNAS = {
   },
   Route: {
     head: ['NAME', 'HOST/PORT', 'PATH', 'SERVICES', 'PORT', 'TERMINATION', 'WILDCARD'],
-    row: (o) => [o.spec.host, o.spec.path || '', o.spec.to.name, o.spec.port?.targetPort ?? '<all>', o.spec.tls ? o.spec.tls.termination + (o.spec.tls.insecureEdgeTerminationPolicy ? '/' + o.spec.tls.insecureEdgeTerminationPolicy : '') : '', o.spec.wildcardPolicy],
+    row: (o) => [o.status?.ingress?.[0]?.conditions?.[0]?.status === 'False' ? o.status.ingress[0].conditions[0].reason : o.spec.host, o.spec.path || '', o.spec.to.name, o.spec.port?.targetPort ?? '<all>', o.spec.tls ? o.spec.tls.termination + (o.spec.tls.insecureEdgeTerminationPolicy ? '/' + o.spec.tls.insecureEdgeTerminationPolicy : '') : '', o.spec.wildcardPolicy],
   },
   User: {
     head: ['NAME', 'UID', 'FULL NAME', 'IDENTITIES'],
@@ -80,6 +80,14 @@ const COLUNAS = {
   },
   Role: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
   ClusterRole: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
+  NetworkPolicy: {
+    head: ['NAME', 'POD-SELECTOR', 'AGE'],
+    row: (o, c) => {
+      const sel = o.spec.podSelector || {};
+      const pares = [...Object.entries(sel.matchLabels || {}).map(([k, v]) => `${k}=${v}`), ...(sel.matchExpressions || []).map((e) => `${e.key} ${e.operator.toLowerCase()} (${(e.values || []).join(',')})`)];
+      return [pares.join(',') || '<none>', idade(o, c)];
+    },
+  },
   Template: {
     head: ['NAME', 'DESCRIPTION', 'PARAMETERS', 'OBJECTS'],
     row: (o) => {

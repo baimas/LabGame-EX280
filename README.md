@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 4 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Projeto em construção: 5 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -51,7 +51,7 @@ navegador.
 | 1. Gestão declarativa | Manifestos, Kustomize, secrets, config maps | 4 missões |
 | 2. Aplicações empacotadas | Templates, Helm, services, labels | 6 missões |
 | 3. Identidade | HTPasswd, usuários, grupos, RBAC | 5 missões |
-| 4. Segurança de rede | Routes, TLS, network policies | em construção |
+| 4. Segurança de rede | Routes, TLS, network policies | 5 missões |
 | 5. Além do HTTP | LoadBalancer, acesso externo | em construção |
 | 6. Autosserviço | Quotas, limit ranges, project template | em construção |
 | 7. Operators | Instalar e remover operators | em construção |
@@ -93,6 +93,14 @@ Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e 
 - **Cada time no seu quadrado:** grupos e os papéis `admin`, `edit` e `view` por projeto.
 - **Um papel sob medida:** `role`, `rolebinding`, `clusterrole` e `clusterrolebinding` próprios.
 - **Fechando a porta dos fundos:** `cluster-admin` para um grupo e remoção do `kubeadmin`.
+
+**Capítulo 4 — Segurança de rede**
+
+- **Cadeado no pagamento:** chave, CSR e certificado com `openssl`, e route edge com redirecionamento.
+- **O cofre fala TLS sozinho:** secret TLS montado no pod e route passthrough.
+- **TLS também por dentro:** service CA, CA bundle injetado em config map e route reencrypt.
+- **Ninguém entra sem convite:** `deny-all` e liberações por pod, por namespace e para o roteador.
+- **Políticas que bloquearam demais:** troubleshooting de network policies com seletor e porta errados.
 
 ## Usuários do laboratório
 

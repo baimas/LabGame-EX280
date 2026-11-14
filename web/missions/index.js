@@ -20,13 +20,18 @@ import usuarios from './c3/usuarios.js';
 import gruposMissao from './c3/grupos.js';
 import papelProprio from './c3/papel-proprio.js';
 import kubeadmin from './c3/kubeadmin.js';
+import edge from './c4/edge.js';
+import passthrough from './c4/passthrough.js';
+import serviceCa from './c4/service-ca.js';
+import netpolIsola from './c4/netpol-isola.js';
+import netpolConserto from './c4/netpol-conserto.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
   { id: 'c1', title: { pt: 'Gestão declarativa', en: 'Declarative management' }, domain: { pt: 'Manifestos, Kustomize, secrets e config maps', en: 'Manifests, Kustomize, secrets, and config maps' }, missions: [manifestos, configuracao, kustomizeBase, overlays] },
   { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [replicasets, servicos, templates, templateProprio, helmInstall, helmUpgrade] },
   { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [htpasswdMissao, usuarios, gruposMissao, papelProprio, kubeadmin] },
-  { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [] },
+  { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [edge, passthrough, serviceCa, netpolIsola, netpolConserto] },
   { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [] },
   { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [] },
   { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [] },
@@ -68,5 +73,11 @@ const OBJETIVOS_EN = {
   'Alterar senhas de usuários': 'Change user passwords',
   'Criar e gerenciar grupos': 'Create and manage groups',
   'Modificar permissões de usuários e grupos': 'Modify user and group permissions',
+  'Proteger tráfego externo e interno com certificados TLS': 'Protect external and internal traffic with TLS certificates',
+  'Criar e editar routes externas': 'Create and edit external routes',
+  'Criar e aplicar secrets para informações sensíveis': 'Create and apply secrets to manage sensitive information',
+  'Configurar network policies de aplicações': 'Configure application network policies',
+  'Controlar o tráfego de entrada (ingress) do cluster': 'Control cluster network ingress',
+  'Solucionar problemas de rede definida por software (SDN)': 'Troubleshoot software-defined networking',
 };
 export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);

@@ -4,6 +4,7 @@ import { clone, uuid, b64 } from './util.js';
 import { kindOf } from './resources.js';
 import { reconcile } from './controllers.js';
 import { seed } from './seed.js';
+import { umCert, umaChave } from './tls.js';
 
 export const SERVER = 'https://api.ocp4.example.com:6443';
 export const APPS_DOMAIN = 'apps.ocp4.example.com';
@@ -184,6 +185,11 @@ export class Cluster {
       spec.containers.forEach((c, i) => {
         if (!c.name) throw invalido(o, `${caminho}.containers[${i}].name: Required value`);
         if (!c.image) throw invalido(o, `${caminho}.containers[${i}].image: Required value`);
+        const vistos = new Set();
+        (c.volumeMounts || []).forEach((m, j) => {
+          if (vistos.has(m.mountPath)) throw invalido(o, `${caminho}.containers[${i}].volumeMounts[${j}].mountPath: Invalid value: "${m.mountPath}": must be unique`);
+          vistos.add(m.mountPath);
+        });
       });
     };
     if (o.kind === 'Pod') conteineres(o.spec, 'spec');
@@ -198,6 +204,8 @@ export class Cluster {
     }
     if (o.kind === 'Service' && o.spec?.type !== 'ExternalName' && !o.spec?.ports?.length) throw invalido(o, 'spec.ports: Required value');
     if (o.kind === 'Route' && !o.spec?.to?.name) throw invalido(o, 'spec.to.name: Required value');
+    if (o.kind === 'Route' && o.spec.tls?.termination === 'passthrough' && (o.spec.tls.certificate || o.spec.tls.key)) throw invalido(o, 'spec.tls.certificate: Invalid value: "redacted certificate data": passthrough termination does not support certificates');
+    if (o.kind === 'Route' && o.spec.tls && !['edge', 'passthrough', 'reencrypt'].includes(o.spec.tls.termination)) throw invalido(o, `spec.tls.termination: Unsupported value: "${o.spec.tls.termination}": supported values: "edge", "passthrough", "reencrypt"`);
   }
 
   padroes(o) {
@@ -234,7 +242,18 @@ export class Cluster {
       o.spec.to.kind ??= 'Service';
       o.spec.to.weight ??= 100;
       o.spec.wildcardPolicy ??= 'None';
-      o.status = { ingress: [{ host: o.spec.host, routerName: 'default', conditions: [{ type: 'Admitted', status: 'True' }] }] };
+      // Validação estendida do roteador: certificado legível, par com a chave e dentro da validade.
+      const tls = o.spec.tls;
+      let problema = null;
+      if (tls?.certificate) {
+        const cert = umCert(tls.certificate);
+        const chave = umaChave(tls.key);
+        if (!cert) problema = 'spec.tls.certificate: Invalid value: "redacted certificate data": data does not contain any valid RSA or ECDSA certificates';
+        else if (!chave) problema = 'spec.tls.key: Invalid value: "": no key specified';
+        else if (chave.id !== cert.pub) problema = 'spec.tls.key: Invalid value: "redacted key data": private key does not match public key';
+        else if (cert.notAfter < this.now) problema = 'spec.tls.certificate: Invalid value: "redacted certificate data": error verifying certificate: x509: certificate has expired or is not yet valid';
+      }
+      o.status = { ingress: [{ host: o.spec.host, routerName: 'default', conditions: [problema ? { type: 'Admitted', status: 'False', reason: 'ExtendedValidationFailed', message: problema } : { type: 'Admitted', status: 'True' }] }] };
     }
     if (o.kind === 'Secret') {
       o.type ??= 'Opaque';

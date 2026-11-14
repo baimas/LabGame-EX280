@@ -2,7 +2,8 @@
 // policies e as respostas HTTP das aplicações.
 import { APPS_DOMAIN } from './cluster.js';
 import { findImage } from './images.js';
-import { endpoints, podPronto } from './controllers.js';
+import { endpoints, podPronto, resolveEnv, tlsDaAplicacao } from './controllers.js';
+import { ROUTER_CERT, API_CERT, SERVICE_CA, verifica } from './tls.js';
 import { matchLabels } from './util.js';
 import { VERSAO, KUBE } from './seed.js';
 
@@ -134,21 +135,27 @@ export function dnsLiberado(c, pod) {
 // --------------------------------------------------------- aplicações
 
 // Resposta HTTP do processo que escuta no pod, ou erro de conexão.
-function respostaDoPod(c, pod, porta, caminho) {
+// `https` indica que o cliente abriu TLS; a resposta traz o certificado do pod.
+function respostaDoPod(c, pod, porta, caminho, https = false) {
   if (!podPronto(pod)) return { erro: 'recusada' };
   const ct = pod.spec.containers[0];
   const achada = findImage(ct.image);
   if (achada.error || ct.command || ct.args) return { erro: 'recusada' };
   const img = achada.image;
-  if (!img.port || img.port !== porta) return { erro: 'recusada' };
+  const tls = img.repo.includes('/nimbus/') ? tlsDaAplicacao(c, pod, ct, resolveEnv(c, pod, ct).env) : null;
+  const portaTls = tls && !tls.erro ? tls.porta : null;
+  if (porta === portaTls && !https) return { status: 400, tipo: 'text/plain', corpo: 'Client sent an HTTP request to an HTTPS server.\n' };
+  if (porta !== portaTls && (!img.port || img.port !== porta)) return { erro: 'recusada' };
+  if (porta !== portaTls && https) return { erro: 'tls-versao' };
+  const extra = porta === portaTls ? { cert: tls.cert } : {};
   const nome = img.repo.split('/').slice(-2).join('/');
   const p = pod.metadata.name;
   const v = achada.tag;
   if (nome === 'rhel9/mysql-80') return { erro: 'mysql' };
   if (nome === 'rhel9/postgresql-13') return { erro: 'vazia' };
-  const json = (o) => ({ status: 200, tipo: 'application/json', corpo: JSON.stringify(o) + '\n' });
-  const html = (titulo, texto) => ({ status: 200, tipo: 'text/html; charset=UTF-8', corpo: `<html>\n  <head><title>${titulo}</title></head>\n  <body>\n    <h1>${titulo}</h1>\n    <p>${texto}</p>\n  </body>\n</html>\n` });
-  if (caminho === '/healthz' || caminho === '/health' || caminho === '/ready') return { status: 200, tipo: 'text/plain', corpo: 'ok\n' };
+  const json = (o) => ({ status: 200, tipo: 'application/json', corpo: JSON.stringify(o) + '\n', ...extra });
+  const html = (titulo, texto) => ({ status: 200, tipo: 'text/html; charset=UTF-8', corpo: `<html>\n  <head><title>${titulo}</title></head>\n  <body>\n    <h1>${titulo}</h1>\n    <p>${texto}</p>\n  </body>\n</html>\n`, ...extra });
+  if (caminho === '/healthz' || caminho === '/health' || caminho === '/ready') return { status: 200, tipo: 'text/plain', corpo: 'ok\n', ...extra };
   switch (nome) {
     case 'nimbus/portal': return html('Nimbus Portal', `version ${v} - served by ${p}`);
     case 'nimbus/billing-api': return json({ service: 'billing-api', version: v, pod: p, path: caminho });
@@ -176,7 +183,7 @@ function portaAlvo(svc, pod, portaSvc) {
 }
 
 // Requisição de um pod (ou do roteador) para um service.
-function viaService(c, origem, svc, portaSvc, caminho) {
+function viaService(c, origem, svc, portaSvc, caminho, https = false) {
   const sp = typeof portaSvc === 'object' ? portaSvc : svc.spec.ports.find((p) => p.port === portaSvc);
   if (!sp) return { erro: 'recusada' };
   const eps = endpoints(c, svc);
@@ -185,32 +192,40 @@ function viaService(c, origem, svc, portaSvc, caminho) {
   const porta = portaAlvo(svc, pod, sp);
   if (!porta) return { erro: 'recusada' };
   if (!permite(c, origem, comoDestino(pod, porta))) return { erro: 'bloqueada' };
-  return respostaDoPod(c, pod, porta, caminho);
+  return { ...respostaDoPod(c, pod, porta, caminho, https), svcHost: `${svc.metadata.name}.${svc.metadata.namespace}.svc` };
 }
 
+const admitida = (r) => r.status?.ingress?.[0]?.conditions?.[0]?.status !== 'False';
+
 function viaRoute(c, req) {
-  const rotas = c.list('Route').filter((r) => r.spec.host === req.host && caminhoCasa(r.spec.path, req.caminho));
+  const rotas = c.list('Route').filter((r) => r.spec.host === req.host && admitida(r) && caminhoCasa(r.spec.path, req.caminho));
   rotas.sort((a, b) => (b.spec.path || '').length - (a.spec.path || '').length);
   const rota = rotas[0];
   const nao = { status: 503, tipo: 'text/html', corpo: PAGINA_503 };
-  if (!rota) return req.https ? { ...nao, cert: 'padrao' } : nao;
+  if (!rota) return req.https ? { ...nao, cert: ROUTER_CERT } : nao;
   const tls = rota.spec.tls;
   const term = tls?.termination;
   if (!req.https) {
-    if (!term) return encaminha(c, rota, req);
-    if (term === 'edge' && tls.insecureEdgeTerminationPolicy === 'Allow') return encaminha(c, rota, req);
-    if (term !== 'passthrough' && tls.insecureEdgeTerminationPolicy === 'Redirect') return { status: 302, tipo: 'text/html', corpo: '', local: `https://${req.host}${req.caminho}` };
+    if (!term) return encaminha(c, rota, req, false);
+    if (term === 'edge' && tls.insecureEdgeTerminationPolicy === 'Allow') return encaminha(c, rota, req, false);
+    if (tls.insecureEdgeTerminationPolicy === 'Redirect') return { status: 302, tipo: 'text/html', corpo: '', local: `https://${req.host}${req.caminho}` };
     return nao;
   }
-  if (!term) return { ...nao, cert: 'padrao' };
+  if (!term) return { ...nao, cert: ROUTER_CERT };
+  // Passthrough: o roteador repassa o TLS e quem apresenta o certificado é o pod.
   if (term === 'passthrough') {
-    // O certificado agora é o da aplicação; as aplicações do jogo só falam HTTP.
-    const r = encaminha(c, rota, req);
-    return r.erro ? r : { erro: 'tls-versao' };
+    const r = encaminha(c, rota, req, true, true);
+    if (r.erro) return r;
+    return r.cert ? r : { erro: 'tls-versao' };
   }
-  const cert = tls.certificate ? { pem: tls.certificate, ca: tls.caCertificate } : 'padrao';
-  if (term === 'reencrypt') return { ...nao, cert };
-  return { ...encaminha(c, rota, req), cert };
+  const cert = tls.certificate || ROUTER_CERT;
+  if (term === 'edge') return { ...encaminha(c, rota, req, false), cert };
+  // Reencrypt: o roteador abre TLS até o pod e confere o certificado dele.
+  const r = encaminha(c, rota, req, true, true);
+  if (r.erro || !r.cert) return { ...nao, cert };
+  const confiaveis = tls.destinationCACertificate ? [tls.destinationCACertificate] : [SERVICE_CA.pem];
+  if (verifica(r.cert, confiaveis, r.svcHost, c.now)) return { ...nao, cert };
+  return { ...r, cert };
 }
 
 function caminhoCasa(prefixo, caminho) {
@@ -218,20 +233,21 @@ function caminhoCasa(prefixo, caminho) {
   return caminho === prefixo || caminho.startsWith(prefixo.replace(/\/$/, '') + '/');
 }
 
-function encaminha(c, rota, req) {
+function encaminha(c, rota, req, https, cru = false) {
   const svc = c.get('Service', rota.spec.to.name, rota.metadata.namespace);
   const nao = { status: 503, tipo: 'text/html', corpo: PAGINA_503 };
-  if (!svc) return nao;
+  if (!svc) return cru ? { erro: 'recusada' } : nao;
   const alvo = rota.spec.port?.targetPort;
   const sp = alvo === undefined ? svc.spec.ports[0] : svc.spec.ports.find((p) => p.name === alvo || p.targetPort === alvo || String(p.targetPort) === String(alvo) || String(p.port) === String(alvo));
-  if (!sp) return nao;
-  const r = viaService(c, roteador(c), svc, sp, req.caminho);
+  if (!sp) return cru ? { erro: 'recusada' } : nao;
+  const r = viaService(c, roteador(c), svc, sp, req.caminho, https);
+  if (cru) return r;
   return r.erro ? nao : r;
 }
 
 function apiServer(req) {
   if (!req.https) return { status: 400, tipo: 'text/plain', corpo: 'Client sent an HTTP request to an HTTPS server.\n' };
-  const base = { cert: 'api' };
+  const base = { cert: API_CERT };
   if (req.caminho === '/version') return { ...base, status: 200, tipo: 'application/json', corpo: JSON.stringify({ major: '1', minor: KUBE.split('.')[1], gitVersion: KUBE, platform: 'linux/amd64' }, null, 2) + '\n' };
   if (['/healthz', '/readyz', '/livez'].includes(req.caminho)) return { ...base, status: 200, tipo: 'text/plain', corpo: 'ok' };
   const usuario = req.token ? req.token : 'system:anonymous';
@@ -256,16 +272,16 @@ export function requisicao(c, pod, req) {
     case 'route':
       if (porta !== 80 && porta !== 443) return { erro: 'recusada', ip: alvo.ip };
       if ((porta === 443) !== req.https) return req.https ? { erro: 'tls-versao' } : { status: 400, tipo: 'text/html', corpo: '<html><body><h1>400 Bad request</h1>\nYour browser sent an invalid request.\n</body></html>\n' };
-      if (alvo.tipo === 'console') return { status: 200, tipo: 'text/html', corpo: '<!DOCTYPE html><html><head><title>Red Hat OpenShift</title></head><body>…</body></html>\n', cert: 'padrao' };
+      if (alvo.tipo === 'console') return { status: 200, tipo: 'text/html', corpo: '<!DOCTYPE html><html><head><title>Red Hat OpenShift</title></head><body>…</body></html>\n', cert: ROUTER_CERT };
       return viaRoute(c, req);
     case 'service': {
-      const r = viaService(c, comoOrigem(pod), alvo.svc, porta, req.caminho);
+      const r = viaService(c, comoOrigem(pod), alvo.svc, porta, req.caminho, req.https);
       return r.erro ? { ...r, ip: alvo.ip } : r;
     }
     case 'pod': {
       const destino = alvo.pod;
       if (destino !== pod && !permite(c, comoOrigem(pod), comoDestino(destino, porta))) return { erro: 'bloqueada', ip: alvo.ip };
-      const r = respostaDoPod(c, destino, porta, req.caminho);
+      const r = respostaDoPod(c, destino, porta, req.caminho, req.https);
       return r.erro ? { ...r, ip: alvo.ip } : r;
     }
     case 'local':

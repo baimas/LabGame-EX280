@@ -3,6 +3,7 @@
 import { clone, rand, hashId, matchLabels, parseCpu, parseMem, b64 } from './util.js';
 import { findImage } from './images.js';
 import { oauthCtl } from './rbac.js';
+import { umCert, umaChave, certDeServico, SERVICE_CA } from './tls.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
@@ -13,6 +14,60 @@ export function reconcile(c) {
   deployments(c);
   endpointsCtl(c);
   oauthCtl(c);
+  serviceCaCtl(c);
+}
+
+// Service CA: emite certificados para services anotados e injeta o CA bundle em config maps.
+function serviceCaCtl(c) {
+  const ANOT = 'service.beta.openshift.io/serving-cert-secret-name';
+  for (const svc of c.list('Service')) {
+    const nome = svc.metadata.annotations?.[ANOT];
+    if (!nome) continue;
+    const ns = svc.metadata.namespace;
+    if (!c.get('Secret', nome, ns)) {
+      const { crt, key } = certDeServico(svc.metadata.name, ns, c.now);
+      c.create({ kind: 'Secret', metadata: { name: nome, namespace: ns, annotations: { 'service.beta.openshift.io/originating-service-name': svc.metadata.name, 'service.beta.openshift.io/originating-service-uid': svc.metadata.uid, 'service.beta.openshift.io/expiry': c.iso(c.now + 730 * 86400) } }, type: 'kubernetes.io/tls', data: { 'tls.crt': b64.enc(crt), 'tls.key': b64.enc(key) } });
+      svc.metadata.annotations['service.beta.openshift.io/serving-cert-signed-by'] = SERVICE_CA.subject.CN;
+    }
+  }
+  for (const cm of c.list('ConfigMap')) {
+    if (cm.metadata.annotations?.['service.beta.openshift.io/inject-cabundle'] !== 'true') continue;
+    if (cm.data?.['service-ca.crt'] !== SERVICE_CA.pem) {
+      cm.data = { ...(cm.data || {}), 'service-ca.crt': SERVICE_CA.pem };
+      cm.metadata.resourceVersion = String(1000 + c.seq++);
+    }
+  }
+}
+
+// Conteúdo dos config maps e secrets montados no contêiner, por caminho.
+export function arquivosMontados(c, pod, ct) {
+  const out = {};
+  const ns = pod.metadata.namespace;
+  for (const m of ct.volumeMounts || []) {
+    const v = (pod.spec.volumes || []).find((x) => x.name === m.name);
+    const fonte = v?.configMap ? c.get('ConfigMap', v.configMap.name, ns) : v?.secret ? c.get('Secret', v.secret.secretName, ns) : null;
+    if (!fonte) continue;
+    let dados = Object.fromEntries(Object.entries(fonte.data || {}).map(([k, val]) => [k, fonte.kind === 'Secret' ? b64.dec(val) : val]));
+    const itens = (v.configMap || v.secret).items;
+    if (itens) dados = Object.fromEntries(itens.filter((i) => i.key in dados).map((i) => [i.path, dados[i.key]]));
+    const base = m.mountPath.replace(/\/$/, '');
+    if (m.subPath) {
+      if (m.subPath in dados) out[base] = dados[m.subPath];
+    } else for (const [k, val] of Object.entries(dados)) out[`${base}/${k}`] = val;
+  }
+  return out;
+}
+
+// Aplicações do jogo servem HTTPS na 8443 quando TLS_DIR aponta para tls.crt e tls.key.
+export function tlsDaAplicacao(c, pod, ct, env) {
+  const dir = env.TLS_DIR?.replace(/\/$/, '');
+  if (!dir) return null;
+  const arqs = arquivosMontados(c, pod, ct);
+  const crt = umCert(arqs[`${dir}/tls.crt`]);
+  const key = umaChave(arqs[`${dir}/tls.key`]);
+  if (!crt || !key) return { erro: `open ${dir}/${crt ? 'tls.key' : 'tls.crt'}: no such file or directory` };
+  if (crt.pub !== key.id) return { erro: 'tls: private key does not match public key' };
+  return { porta: 8443, cert: crt.pem };
 }
 
 // Mantém um objeto Endpoints por service, com os pods prontos e não prontos.
@@ -240,7 +295,11 @@ function diagnosticar(c, pod, ct) {
   if (ct.command || ct.args) return peloComando([...(ct.command || []), ...(ct.args || [])]);
   if (img.requires && !img.requires.some((grupo) => grupo.every((v) => r.env[v]))) return { tipo: 'sai', codigo: 1, apos: 0, logs: img.crashLog };
   if (img.exits !== undefined) return { tipo: 'sai', codigo: img.exits, apos: 1, logs: img.logs(contexto) };
-  return { tipo: 'roda', logs: img.logs(contexto) };
+  const tls = img.repo.includes('/nimbus/') ? tlsDaAplicacao(c, pod, ct, r.env) : null;
+  if (tls?.erro) return { tipo: 'sai', codigo: 1, apos: 0, logs: [`[${img.repo.split('/').pop()}] loading TLS certificate from ${r.env.TLS_DIR}`, `[${img.repo.split('/').pop()}] FATAL: ${tls.erro}`] };
+  const linhas = img.logs(contexto);
+  if (tls) linhas.push(`[${img.repo.split('/').pop()}] listening on 0.0.0.0:8443 (TLS)`);
+  return { tipo: 'roda', logs: linhas };
 }
 
 function pods(c) {

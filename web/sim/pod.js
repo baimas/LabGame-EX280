@@ -6,6 +6,7 @@ import { resolveEnv } from './controllers.js';
 import { findImage } from './images.js';
 import { b64, hashNum } from './util.js';
 import { DNS_IP, KUBE_IP } from './net.js';
+import { KUBE_CA, SERVICE_CA, openssl } from './tls.js';
 
 const WORKDIR = '/opt/app-root/src';
 const SA = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -60,8 +61,8 @@ function montaFs(c, pod, ct) {
   put('/etc/passwd', `root:x:0:0:root:/root:/bin/bash\ndefault:x:${uid}:0:Default Application User:${WORKDIR}:/sbin/nologin\n`);
   put(`${SA}/namespace`, ns);
   put(`${SA}/token`, `eyJhbGciOiJSUzI1NiIsImtpZCI6InNpbXVsYWRvIn0.${b64.enc(JSON.stringify({ sub: `system:serviceaccount:${ns}:${sa}` })).replace(/=+$/, '')}.assinatura-simulada`);
-  put(`${SA}/ca.crt`, '-----BEGIN CERTIFICATE-----\nMIIDSimuladoKubeApiServerCA\n-----END CERTIFICATE-----\n');
-  put(`${SA}/service-ca.crt`, '-----BEGIN CERTIFICATE-----\nMIIDSimuladoServiceCA\n-----END CERTIFICATE-----\n');
+  put(`${SA}/ca.crt`, KUBE_CA.pem);
+  put(`${SA}/service-ca.crt`, SERVICE_CA.pem);
   fs.mkdir('/tmp', true);
   fs.mkdir(WORKDIR, true);
   fs.somenteLeitura.push(SA);
@@ -117,6 +118,7 @@ function comandos(contexto) {
     uname: ({ args }) => ok(args.includes('-a') ? `Linux ${pod.metadata.name} 5.14.0-427.el9.x86_64 #1 SMP x86_64 x86_64 x86_64 GNU/Linux\n` : 'Linux\n'),
     ps: () => ok(`    PID TTY          TIME CMD\n      1 ?        00:00:02 ${processo}\n     42 pts/0    00:00:00 sh\n     57 pts/0    00:00:00 ps\n`),
     curl,
+    openssl,
     exit: sair,
     logout: sair,
     sh: async (ctx) => shellAninhado(ctx),
