@@ -1,7 +1,7 @@
 // Análise de argumentos e utilitários comuns aos subcomandos do oc.
 import yaml from '../../vendor/js-yaml.mjs';
 import { ApiError } from '../cluster.js';
-import { kindOf, ALL } from '../resources.js';
+import { kindOf, kindDoObjeto, ALL } from '../resources.js';
 
 const CURTAS = { n: 'namespace', o: 'output', l: 'selector', f: 'filename', k: 'kustomize', A: 'all-namespaces', c: 'container', p: 'patch', e: 'env', u: 'username', R: 'recursive', w: 'watch', h: 'help' };
 const BOOLEANAS = ['all-namespaces', 'all', 'show-labels', 'watch', 'no-headers', 'help', 'overwrite', 'force', 'recursive', 'insecure-skip-tls-verify', 'now', 'list', 'add', 'remove', 'dry-run', 'save-config', 'show-server', 'show-console', 'show-token', 'previous', 'follow', 'stdin', 'tty', 'i', 't', 'it', 'ti', 'short', 'client'];
@@ -123,7 +123,7 @@ export function lerManifestos(ctx, f) {
 
 // `Project` em manifesto vira Namespace.
 export function normaliza(o) {
-  const k = tipoOuErro(o.kind);
+  const k = kindDoObjeto(o) || tipoOuErro(o.kind);
   if (k.alias) return { ...o, kind: k.alias, apiVersion: 'v1' };
   return o;
 }

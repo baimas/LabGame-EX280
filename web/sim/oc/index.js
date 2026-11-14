@@ -18,6 +18,7 @@ import { processa, parametros } from '../template.js';
 import { autentica, pode, grupos } from '../rbac.js';
 import { comUsuario, exige } from '../autoriza.js';
 import { GERADORES_RBAC, authCmd, admIdentidade } from './identidade.js';
+import { criaProjeto, configProjetos, templateInicial } from '../projetos.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
 
@@ -443,6 +444,39 @@ const GERADORES = {
     return rota;
   },
 };
+function duros(f) {
+  const hard = {};
+  for (const item of f.all('hard').flatMap((x) => String(x).split(','))) {
+    const i = item.indexOf('=');
+    if (i < 1) throw erro(`error: invalid hard resource "${item}": expected key=value`);
+    hard[item.slice(0, i).trim()] = item.slice(i + 1).trim();
+  }
+  return hard;
+}
+function pares(lista, rotulo) {
+  const out = {};
+  for (const item of lista.flatMap((x) => String(x).split(','))) {
+    const i = item.indexOf('=');
+    if (i < 1) throw erro(`error: invalid ${rotulo} "${item}"`);
+    out[item.slice(0, i)] = item.slice(i + 1);
+  }
+  return out;
+}
+GERADORES.quota = (ctx, pos, f) => {
+  const spec = { hard: duros(f) };
+  if (f.has('scopes')) spec.scopes = String(f.one('scopes')).split(',');
+  return { kind: 'ResourceQuota', metadata: { name: pos[0] }, spec };
+};
+GERADORES.resourcequota = GERADORES.quota;
+GERADORES.clusterresourcequota = (ctx, pos, f) => {
+  const rot = pares(f.all('project-label-selector'), 'label selector');
+  const anot = pares(f.all('project-annotation-selector'), 'annotation selector');
+  if (!Object.keys(rot).length && !Object.keys(anot).length) throw erro('error: one of --project-label-selector or --project-annotation-selector must be provided');
+  const selector = {};
+  if (Object.keys(rot).length) selector.labels = { matchLabels: rot };
+  if (Object.keys(anot).length) selector.annotations = anot;
+  return { kind: 'ClusterResourceQuota', metadata: { name: pos[0] }, spec: { quota: { hard: duros(f) }, selector } };
+};
 Object.assign(GERADORES, GERADORES_RBAC);
 GERADORES.ns = GERADORES.namespace;
 
@@ -539,14 +573,12 @@ function newProject(ctx) {
   if (!nome) throw erro('error: must have exactly one argument');
   const real = ctx.env.clusterReal || c;
   const usuario = ctx.env.usuario || ctx.env.session.user;
-  if (!pode(real, usuario, 'create', 'projectrequests', 'project.openshift.io', null, undefined, ctx.env.gruposExtras)) throw erro('Error from server (Forbidden): You may not request a new project via this API.');
+  if (!pode(real, usuario, 'create', 'projectrequests', 'project.openshift.io', null, undefined, ctx.env.gruposExtras)) {
+    throw erro(`Error from server (Forbidden): ${configProjetos(real).projectRequestMessage || 'You may not request a new project via this API.'}`);
+  }
   if (real.get('Namespace', nome)) throw erro(`Error from server (AlreadyExists): project.project.openshift.io "${nome}" already exists`);
-  const anot = { 'openshift.io/requester': usuario };
-  if (f.has('display-name')) anot['openshift.io/display-name'] = f.one('display-name');
-  if (f.has('description')) anot['openshift.io/description'] = f.one('description');
-  real.create({ kind: 'Namespace', metadata: { name: nome, annotations: anot } });
-  // Quem pede o projeto vira admin dele.
-  real.create({ kind: 'RoleBinding', metadata: { name: 'admin', namespace: nome }, roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: 'admin' }, subjects: [{ apiGroup: 'rbac.authorization.k8s.io', kind: 'User', name: usuario }] });
+  // O projeto sai do template configurado; quem pede vira admin dele.
+  criaProjeto(real, { nome, usuario, display: f.one('display-name') || '', descricao: f.one('description') || '' });
   ctx.env.session.namespace = nome;
   return ok(`Now using project "${nome}" on server "${SERVER}".\n\nYou can add applications to this project with the 'new-app' command. For example, try:\n\n    oc new-app rails-postgresql-example\n\nto build a new example application in Ruby. Or use kubectl to deploy a simple Kubernetes application:\n\n    kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.43 -- /agnhost serve-hostname\n\n`);
 }
@@ -1381,6 +1413,14 @@ function adm(ctx) {
   const c = ctx.env.cluster;
   const id = admIdentidade(ctx, sub, [oque, ...resto].filter((x) => x !== undefined));
   if (id) return id;
+  if (sub === 'create-bootstrap-project-template') {
+    const { f } = parseArgs([oque, ...resto].filter((x) => x !== undefined));
+    const tpl = templateInicial(f.one('name') || 'project-request');
+    const saida = f.one('output');
+    if (saida === 'json') return ok(paraJson(tpl));
+    if (saida === 'name') return ok(`template.template.openshift.io/${tpl.metadata.name}\n`);
+    return ok(paraYaml(tpl));
+  }
   if (sub !== 'top') throw naoSimulado(ctx, `oc adm ${sub ?? ''}`.trim());
   const { f } = parseArgs(resto);
   if (/^nodes?$/.test(oque)) {

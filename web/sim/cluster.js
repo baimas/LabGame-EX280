@@ -1,7 +1,8 @@
 // Armazenamento de recursos do cluster simulado: CRUD, validação, valores
 // padrão e relógio. As regras de comportamento ficam em controllers.js.
 import { clone, uuid, b64 } from './util.js';
-import { kindOf } from './resources.js';
+import { kindOf, kindDoObjeto } from './resources.js';
+import { admite, padroesLimitRange } from './quota.js';
 import { reconcile } from './controllers.js';
 import { seed } from './seed.js';
 import { umCert, umaChave } from './tls.js';
@@ -72,7 +73,7 @@ export class Cluster {
   create(entrada) {
     const o = clone(entrada);
     if (!o || !o.kind) throw new ApiError('error: unable to decode: Object \'Kind\' is missing', 'Invalid');
-    const k = this.tipo(o.kind);
+    const k = this.tipo(kindDoObjeto(o) || o.kind);
     o.kind = k.kind;
     o.apiVersion = k.apiVersion;
     o.metadata ??= {};
@@ -86,6 +87,7 @@ export class Cluster {
     if (this.objs.has(chave)) throw doServidor('AlreadyExists', `${k.resource} "${o.metadata.name}" already exists`);
     this.validar(o);
     this.padroes(o);
+    admite(this, o);
     o.metadata.uid = uuid(`${chave}#${this.seq++}`);
     o.metadata.creationTimestamp = this.iso();
     o.metadata.resourceVersion = String(1000 + this.seq);
@@ -96,7 +98,7 @@ export class Cluster {
   }
 
   update(o) {
-    const k = this.tipo(o.kind);
+    const k = this.tipo(kindDoObjeto(o) || o.kind);
     const chave = this.chave(k, o.metadata.namespace, o.metadata.name);
     const atual = this.objs.get(chave);
     if (!atual) throw doServidor('NotFound', `${k.resource} "${o.metadata.name}" not found`);
@@ -255,6 +257,7 @@ export class Cluster {
       }
       o.status = { ingress: [{ host: o.spec.host, routerName: 'default', conditions: [problema ? { type: 'Admitted', status: 'False', reason: 'ExtendedValidationFailed', message: problema } : { type: 'Admitted', status: 'True' }] }] };
     }
+    if (o.kind === 'LimitRange') padroesLimitRange(o);
     if (o.kind === 'Secret') {
       o.type ??= 'Opaque';
       if (o.stringData) {

@@ -4,6 +4,8 @@ import { clone, rand, hashId, matchLabels, parseCpu, parseMem, b64 } from './uti
 import { findImage } from './images.js';
 import { oauthCtl } from './rbac.js';
 import { umCert, umaChave, certDeServico, SERVICE_CA } from './tls.js';
+import { quotaCtl } from './quota.js';
+import { projetoCtl } from './projetos.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
@@ -16,6 +18,8 @@ export function reconcile(c) {
   oauthCtl(c);
   serviceCaCtl(c);
   metallbCtl(c);
+  quotaCtl(c);
+  projetoCtl(c);
 }
 
 // Endereços de um pool: faixas `a.b.c.d-a.b.c.e` ou CIDR.
@@ -216,11 +220,19 @@ function deployments(c) {
     (d.metadata.annotations ??= {})[REV] = String(rev(atual));
     atual.spec.replicas = d.spec.replicas;
 
-    const novoPronto = (atual.status?.readyReplicas || 0) >= d.spec.replicas || d.spec.strategy?.type === 'Recreate';
-    for (const velho of meus) {
-      if (velho !== atual && velho.spec.replicas > 0 && novoPronto) {
-        c.event(d, 'Normal', 'ScalingReplicaSet', `Scaled down replica set ${velho.metadata.name} from ${velho.spec.replicas} to 0`, 'deployment-controller');
-        velho.spec.replicas = 0;
+    // Os replica sets antigos descem conforme os pods novos ficam prontos,
+    // respeitando o maxUnavailable (25%, arredondado para baixo).
+    const recreate = d.spec.strategy?.type === 'Recreate';
+    const novosProntos = atual.status?.readyReplicas || 0;
+    let sobra = recreate ? 0 : Math.max(0, d.spec.replicas - Math.floor(d.spec.replicas * 0.25) - novosProntos);
+    if (novosProntos >= d.spec.replicas) sobra = 0;
+    for (const velho of [...meus].sort((a, b) => rev(b) - rev(a))) {
+      if (velho === atual || velho.spec.replicas === 0) continue;
+      const alvo = Math.min(velho.spec.replicas, sobra);
+      sobra -= alvo;
+      if (alvo < velho.spec.replicas) {
+        c.event(d, 'Normal', 'ScalingReplicaSet', `Scaled down replica set ${velho.metadata.name} from ${velho.spec.replicas} to ${alvo}`, 'deployment-controller');
+        velho.spec.replicas = alvo;
       }
     }
 
@@ -239,6 +251,7 @@ function deployments(c) {
         prontos >= minimo
           ? { type: 'Available', status: 'True', reason: 'MinimumReplicasAvailable', message: 'Deployment has minimum availability.' }
           : { type: 'Available', status: 'False', reason: 'MinimumReplicasUnavailable', message: 'Deployment does not have minimum availability.' },
+        ...(atual.status?.conditions || []).filter((x) => x.type === 'ReplicaFailure'),
         { type: 'Progressing', status: 'True', reason: prontos >= desejado ? 'NewReplicaSetAvailable' : 'ReplicaSetUpdated', message: `ReplicaSet "${atual.metadata.name}" ${prontos >= desejado ? 'has successfully progressed.' : 'is progressing.'}` },
       ],
     };
@@ -263,9 +276,10 @@ function replicasets(c) {
       }
     }
     let meus = c.list('Pod', ns).filter((p) => donoDe(p, rs));
+    let falha = null;
     while (meus.length < rs.spec.replicas) {
       const tpl = rs.spec.template;
-      const p = c.create({
+      const pedido = {
         kind: 'Pod',
         metadata: {
           name: `${rs.metadata.name}-${rand(5)}`,
@@ -275,7 +289,21 @@ function replicasets(c) {
           ownerReferences: [ref(rs)],
         },
         spec: clone(tpl.spec),
-      });
+      };
+      let p;
+      try {
+        p = c.create(pedido);
+      } catch (e) {
+        if (!e.reason) throw e;
+        // Admissão recusou (quota, limit range): o controller tenta de novo depois.
+        falha = e.message.replace(/^Error from server \([A-Za-z]+\): /, '');
+        const st = (c.side[rs.metadata.uid] ??= {});
+        const chave = falha.replace(/^pods "[^"]*"/, 'pods');
+        if (st.falha !== chave) c.event(rs, 'Warning', 'FailedCreate', `Error creating: ${falha}`, 'replicaset-controller');
+        st.falha = chave;
+        break;
+      }
+      if (c.side[rs.metadata.uid]) delete c.side[rs.metadata.uid].falha;
       c.event(rs, 'Normal', 'SuccessfulCreate', `Created pod: ${p.metadata.name}`, 'replicaset-controller');
       meus.push(p);
     }
@@ -290,6 +318,7 @@ function replicasets(c) {
     }
     const prontos = meus.filter(podPronto).length;
     rs.status = { replicas: meus.length, readyReplicas: prontos, availableReplicas: prontos, fullyLabeledReplicas: meus.length };
+    if (falha) rs.status.conditions = [{ type: 'ReplicaFailure', status: 'True', reason: 'FailedCreate', message: falha }];
   }
 }
 

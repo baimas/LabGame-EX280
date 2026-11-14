@@ -271,7 +271,7 @@ const PAPEIS = {
 // Objetos de RBAC e OAuth criados na instalação do cluster.
 export function objetosIniciais(htpasswdInicial) {
   const out = Object.entries(PAPEIS).map(([name, rules]) => ({ kind: 'ClusterRole', metadata: { name, annotations: { 'rbac.authorization.kubernetes.io/autoupdate': 'true' } }, rules }));
-  const crb = (name, role, subjects) => ({ kind: 'ClusterRoleBinding', metadata: { name }, roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: role }, subjects });
+  const crb = (name, role, subjects) => ({ kind: 'ClusterRoleBinding', metadata: { name, annotations: { 'rbac.authorization.kubernetes.io/autoupdate': 'true' } }, roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: role }, subjects });
   const grupo = (name) => ({ apiGroup: 'rbac.authorization.k8s.io', kind: 'Group', name });
   out.push(
     crb('cluster-admin', 'cluster-admin', [grupo('system:masters')]),

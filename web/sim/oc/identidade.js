@@ -12,6 +12,8 @@ const RBAC = 'rbac.authorization.k8s.io';
 export function resolveRecurso(txt) {
   if (txt === '*') return { recurso: '*', grupo: '*' };
   const [base, sub] = txt.split('/');
+  // Recursos virtuais, sem objeto guardado no cluster.
+  if (/^projectrequests?(\.project\.openshift\.io)?$/.test(base)) return { recurso: 'projectrequests', grupo: 'project.openshift.io' };
   const k = kindOf(base);
   if (!k) {
     const [nome, ...g] = base.split('.');

@@ -1,6 +1,7 @@
 // Estado inicial do cluster: um OpenShift de nó único, como nos laboratórios.
 import { TEMPLATES } from './catalogo.js';
 import { objetosIniciais, hashSenha } from './rbac.js';
+import { kindDoObjeto } from './resources.js';
 
 export const VERSAO = '4.18.6';
 export const KUBE = 'v1.31.6';
@@ -23,6 +24,7 @@ const COMPONENTES = [
   ['openshift-ingress', 'router-default', 1],
   ['openshift-console', 'console', 1],
   ['openshift-authentication', 'oauth-openshift', 1],
+  ['openshift-apiserver', 'apiserver', 1],
   ['openshift-image-registry', 'image-registry', 1],
   ['openshift-dns', 'dns-operator', 1],
   ['metallb-system', 'metallb-operator-controller-manager', 1],
@@ -55,6 +57,8 @@ function objetosBase() {
     // Operator do MetalLB instalado, sem pools de endereços configurados.
     { kind: 'Namespace', metadata: { name: 'metallb-system', labels: { 'openshift.io/cluster-monitoring': 'true' } } },
     { kind: 'MetalLB', metadata: { name: 'metallb', namespace: 'metallb-system' }, spec: { logLevel: 'info' } },
+    // Configuração dos pedidos de projeto, sem template nem mensagem.
+    { apiVersion: 'config.openshift.io/v1', kind: 'Project', metadata: { name: 'cluster' }, spec: {} },
   ];
 }
 
@@ -65,7 +69,7 @@ export function migra(c) {
     if (ns) ns.metadata.labels = { ...labels, ...ns.metadata.labels };
   }
   for (const o of objetosBase()) {
-    if (!c.get(o.kind, o.metadata.name, o.metadata.namespace)) c.create(o);
+    if (!c.get(kindDoObjeto(o), o.metadata.name, o.metadata.namespace)) c.create(o);
   }
   c.tick(60);
 }

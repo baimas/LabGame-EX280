@@ -112,6 +112,20 @@ const COLUNAS = {
       return [texto, idade(o, c)];
     },
   },
+  ResourceQuota: {
+    head: ['NAME', 'AGE', 'REQUEST', 'LIMIT'],
+    row: (o, c) => {
+      const hard = o.spec?.hard || {};
+      const usado = o.status?.used || {};
+      const lista = (fn) => Object.keys(hard).filter(fn).sort().map((r) => `${r}: ${usado[r] ?? '0'}/${hard[r]}`).join(', ');
+      return [idade(o, c), lista((r) => !r.startsWith('limits.')), lista((r) => r.startsWith('limits.'))];
+    },
+  },
+  LimitRange: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
+  ClusterResourceQuota: {
+    head: ['NAME', 'LABEL SELECTOR', 'ANNOTATION SELECTOR'],
+    row: (o) => [labelsText(o.spec?.selector?.labels?.matchLabels) === '<none>' ? '' : labelsText(o.spec?.selector?.labels?.matchLabels), Object.keys(o.spec?.selector?.annotations || {}).length ? `map[${Object.entries(o.spec.selector.annotations).map(([k, v]) => `${k}:${v}`).join(' ')}]` : 'map[]'],
+  },
   ConfigMap: { head: ['NAME', 'DATA', 'AGE'], row: (o, c) => [Object.keys(o.data || {}).length, idade(o, c)] },
   Secret: { head: ['NAME', 'TYPE', 'DATA', 'AGE'], row: (o, c) => [o.type, Object.keys(o.data || {}).length, idade(o, c)] },
   ServiceAccount: { head: ['NAME', 'SECRETS', 'AGE'], row: (o, c) => [1, idade(o, c)] },
@@ -167,9 +181,10 @@ export function tabela(k, itens, c, { wide, labels, todosNs, prefixo, semCabecal
 export function ordena(o) {
   const { apiVersion, kind, metadata, spec, status, ...resto } = o;
   const out = { apiVersion };
+  if (kind === 'ProjectConfig') o = { ...o, kind: 'Project' };
   for (const [k, v] of Object.entries(resto)) if (k !== 'involvedObject') out[k] = v;
   if (o.involvedObject) out.involvedObject = o.involvedObject;
-  out.kind = kind;
+  out.kind = o.kind;
   out.metadata = metadata;
   if (spec !== undefined) out.spec = spec;
   if (status !== undefined) out.status = status;
@@ -359,6 +374,30 @@ const DESCRICOES = {
     let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
     s += `\nType:  ${o.type}\n\nData\n====\n` + Object.entries(o.data || {}).map(([k, v]) => `${k}:  ${atob(v).length} bytes\n`).join('');
     return s;
+  },
+  ResourceQuota(o) {
+    let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace);
+    const hard = o.spec?.hard || {};
+    const linhas = Object.keys(hard).sort().map((r) => [r, o.status?.used?.[r] ?? '0', hard[r]]);
+    return s + table([['Resource', 'Used', 'Hard'], ['--------', '----', '----'], ...linhas]);
+  },
+  LimitRange(o) {
+    let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace);
+    const linhas = [];
+    for (const lim of o.spec?.limits || []) {
+      const recursos = new Set(['min', 'max', 'defaultRequest', 'default', 'maxLimitRequestRatio'].flatMap((x) => Object.keys(lim[x] || {})));
+      for (const r of [...recursos].sort()) linhas.push([lim.type || 'Container', r, lim.min?.[r] ?? '-', lim.max?.[r] ?? '-', lim.defaultRequest?.[r] ?? '-', lim.default?.[r] ?? '-', lim.maxLimitRequestRatio?.[r] ?? '-']);
+    }
+    return s + table([['Type', 'Resource', 'Min', 'Max', 'Default Request', 'Default Limit', 'Max Limit/Request Ratio'], ['----', '--------', '---', '---', '---------------', '-------------', '-----------------------'], ...linhas]);
+  },
+  ClusterResourceQuota(o) {
+    let s = campo('Name', o.metadata.name) + campo('Created', o.metadata.creationTimestamp) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
+    s += campo('Namespace Selector', `[${(o.status?.namespaces || []).map((n) => `"${n.namespace}"`).join(' ')}]`);
+    s += campo('Label Selector', labelsText(o.spec?.selector?.labels?.matchLabels) === '<none>' ? '' : labelsText(o.spec?.selector?.labels?.matchLabels));
+    s += campo('AnnotationSelector', `map[${Object.entries(o.spec?.selector?.annotations || {}).map(([k, v]) => `${k}:${v}`).join(' ')}]`);
+    const hard = o.spec?.quota?.hard || {};
+    const linhas = Object.keys(hard).sort().map((r) => [r, o.status?.total?.used?.[r] ?? '0', hard[r]]);
+    return s + table([['Resource', 'Used', 'Hard'], ['--------', '----', '----'], ...linhas]);
   },
   ClusterOperator(o) {
     let s = campo('Name', o.metadata.name) + campo('Kind', 'ClusterOperator') + 'Status:\n  Conditions:\n';

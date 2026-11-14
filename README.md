@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 6 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Projeto em construção: 7 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -53,7 +53,7 @@ navegador.
 | 3. Identidade | HTPasswd, usuários, grupos, RBAC | 5 missões |
 | 4. Segurança de rede | Routes, TLS, network policies | 5 missões |
 | 5. Além do HTTP | LoadBalancer, acesso externo | 4 missões |
-| 6. Autosserviço | Quotas, limit ranges, project template | em construção |
+| 6. Autosserviço | Quotas, limit ranges, project template | 5 missões |
 | 7. Operators | Instalar e remover operators | em construção |
 | 8. Segurança de aplicações | Service accounts, SCC, jobs, cron jobs | em construção |
 | 9. Updates | Atualização do cluster e de operators | em construção |
@@ -108,6 +108,14 @@ Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e 
 - **Endereços para o fliperama:** `IPAddressPool`, `L2Advertisement` e IP fixo no MetalLB.
 - **Uma porta no nó:** services NodePort, inclusive trocando o tipo de um service existente.
 - **O IP que ninguém alcança:** troubleshooting de MetalLB (pool, anúncio) e network policy para tráfego externo.
+
+**Capítulo 6 — Autosserviço**
+
+- **Teto de gastos:** `ResourceQuota` e `oc set resources` para pods recusados pela quota.
+- **Padrão para quem esquece:** `LimitRange` com valores padrão e máximo, e pods que passam do limite.
+- **Um orçamento para o time Órion:** `ClusterResourceQuota` por label de projeto.
+- **Todo projeto nasce pronto:** template de criação de projetos com quota e limit range.
+- **Projeto só com pedido:** self-provisioner restrito a um grupo, à prova de reinício do servidor de API.
 
 ## Usuários do laboratório
 

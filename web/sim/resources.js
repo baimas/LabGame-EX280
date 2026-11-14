@@ -58,12 +58,27 @@ export const KINDS = [
 // `Project` é uma visão de Namespace, como no OpenShift.
 export const PROJECT = { ...def('Project', 'projects', [], false, 'project.openshift.io/v1'), alias: 'Namespace' };
 
+// Configuração de projetos do cluster (`projects.config.openshift.io`). Tem
+// o mesmo kind de Project, então só responde pelos nomes com o grupo.
+// Internamente o kind é ProjectConfig; nas saídas aparece como Project.
+export const PROJECT_CONFIG = { ...def('ProjectConfig', 'projects', [], false, 'config.openshift.io/v1'), singular: 'project', out: 'project.config.openshift.io', exibe: 'Project' };
+
 const indice = new Map();
 for (const k of [...KINDS, PROJECT]) {
   for (const nome of [k.kind.toLowerCase(), k.plural, ...k.short]) {
     indice.set(nome, k);
     if (k.group) indice.set(`${nome}.${k.group}`, k);
+    // `clusterrolebinding.rbac`, `route.route`...
+    if (k.group) indice.set(`${nome}.${k.group.split('.')[0]}`, k);
   }
+}
+for (const nome of ['project', 'projects']) indice.set(`${nome}.config.openshift.io`, PROJECT_CONFIG);
+indice.set('projectconfig', PROJECT_CONFIG);
+
+// Tipo de um objeto, olhando também o apiVersion.
+export function kindDoObjeto(o) {
+  if (o?.kind === 'Project' && String(o.apiVersion || '').startsWith('config.openshift.io')) return PROJECT_CONFIG;
+  return kindOf(o?.kind);
 }
 
 // Resolve `deploy`, `deployments`, `Deployment`, `deployment.apps`...
