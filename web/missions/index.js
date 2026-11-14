@@ -1,0 +1,52 @@
+// Catálogo de capítulos e missões. Cada capítulo espelha um domínio dos
+// objetivos oficiais da EX280.
+import primeiroDia from './c0/primeiro-dia.js';
+import inventario from './c0/inventario.js';
+import plantao from './c0/plantao.js';
+import imagens from './c0/imagens.js';
+import saude from './c0/saude.js';
+import manifestos from './c1/manifestos.js';
+import configuracao from './c1/configuracao.js';
+import kustomizeBase from './c1/kustomize-base.js';
+import overlays from './c1/overlays.js';
+
+export const CHAPTERS = [
+  { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
+  { id: 'c1', title: { pt: 'Gestão declarativa', en: 'Declarative management' }, domain: { pt: 'Manifestos, Kustomize, secrets e config maps', en: 'Manifests, Kustomize, secrets, and config maps' }, missions: [manifestos, configuracao, kustomizeBase, overlays] },
+  { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [] },
+  { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [] },
+  { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [] },
+  { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [] },
+  { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [] },
+  { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [] },
+  { id: 'c8', title: { pt: 'Segurança de aplicações', en: 'Application security' }, domain: { pt: 'Service accounts, SCC, jobs e cron jobs', en: 'Service accounts, SCCs, jobs, and cron jobs' }, missions: [] },
+  { id: 'c9', title: { pt: 'Updates', en: 'Updates' }, domain: { pt: 'Atualização do cluster e de operators', en: 'Cluster and operator updates' }, missions: [] },
+];
+
+export const MISSIONS = CHAPTERS.flatMap((c) => c.missions.map((m) => ({ ...m, chapter: c.id })));
+export const byId = (id) => MISSIONS.find((m) => m.id === id);
+
+// Objetivos oficiais citados nas missões, nos dois idiomas.
+const OBJETIVOS_EN = {
+  'Criar e excluir projetos': 'Create and delete projects',
+  'Usar a CLI para gerenciar o cluster': 'Use the command-line interface to manage and configure a cluster',
+  'Expor aplicações para acesso externo': 'Expose applications to external access',
+  'Consultar, formatar e filtrar atributos de recursos': 'Query, format, and filter attributes of Kubernetes resources',
+  'Examinar recursos e o status do cluster': 'Examine resources and cluster status',
+  'Trabalhar com labels e selectors': 'Work with labels and selectors',
+  'Visualizar logs': 'View logs',
+  'Monitorar eventos do cluster': 'Monitor cluster events and alerts',
+  'Solucionar problemas comuns de contêineres e pods': 'Troubleshoot common container, pod, and cluster events and alerts',
+  'Localizar e examinar imagens de contêiner': 'Locate and examine container images',
+  'Identificar imagens por tags e digests': 'Identify images by tags and digests',
+  'Atualizar implantações de aplicações': 'Update application deployments',
+  'Avaliar a saúde de um cluster OpenShift': 'Assess the health of an OpenShift cluster',
+  'Monitorar eventos e alertas do cluster': 'Monitor cluster events and alerts',
+  'Trabalhar com manifestos de recursos': 'Work with resource manifests',
+  'Implantar aplicações a partir de manifestos YAML': 'Deploy applications from YAML manifests',
+  'Criar e usar config maps': 'Create and use config maps',
+  'Criar e usar secrets': 'Create and use secrets',
+  'Implantar aplicações com Kustomize': 'Deploy applications with Kustomize',
+  'Trabalhar com overlays do Kustomize': 'Work with Kustomize overlays',
+};
+export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);

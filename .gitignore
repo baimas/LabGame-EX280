@@ -1,0 +1,6 @@
+# Material licenciado do curso: nunca vai para o repositório
+*.pdf
+
+node_modules/
+.DS_Store
+.claude/

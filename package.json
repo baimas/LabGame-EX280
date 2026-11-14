@@ -1,0 +1,15 @@
+{
+  "name": "labgame-ex280",
+  "version": "0.1.0",
+  "description": "Labs gamificados para estudar para a prova Red Hat EX280, com um OpenShift simulado no navegador",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

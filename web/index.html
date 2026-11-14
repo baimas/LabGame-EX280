@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LabGame EX280</title>
+  <link rel="stylesheet" href="vendor/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <span class="logo">◆</span>
+      <div>
+        <strong>LabGame EX280</strong>
+        <small id="subtitulo"></small>
+      </div>
+    </div>
+    <div class="nivel">
+      <div class="nivel-texto"><span id="nivel-nome"></span><span id="nivel-xp"></span></div>
+      <div class="barra"><div id="nivel-barra"></div></div>
+    </div>
+    <div class="acoes-topo">
+      <button id="btn-idioma" class="fantasma" type="button"></button>
+    </div>
+  </header>
+
+  <div class="palco">
+    <nav id="lista" class="lateral" aria-label="Missões"></nav>
+
+    <main class="centro">
+      <section id="chamado" class="chamado"></section>
+      <section class="console">
+        <div class="console-barra">
+          <span id="console-titulo">workstation</span>
+          <span id="relogio" class="relogio"></span>
+        </div>
+        <div id="terminal" class="terminal"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="editor" class="editor" hidden>
+    <div class="editor-caixa">
+      <div class="editor-barra">
+        <span id="editor-arquivo"></span>
+        <span class="editor-botoes">
+          <button id="editor-cancelar" class="fantasma" type="button"></button>
+          <button id="editor-salvar" class="primario" type="button"></button>
+        </span>
+      </div>
+      <textarea id="editor-texto" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      <div class="editor-rodape" id="editor-dica"></div>
+    </div>
+  </div>
+
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
