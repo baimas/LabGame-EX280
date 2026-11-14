@@ -107,11 +107,13 @@ export function resolve(c, host, pod) {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
     if (h === '127.0.0.1') return pod ? { tipo: 'pod', pod, ip: h } : { tipo: 'local', ip: h };
     if (h === KUBE_IP) return pod ? { tipo: 'kube', ip: h } : { tipo: 'inalcancavel', ip: h };
+    const lb = c.list('Service').find((s) => s.status?.loadBalancer?.ingress?.[0]?.ip === h);
+    if (lb) return { tipo: 'lb', svc: lb, ip: h };
     const svc = c.list('Service').find((s) => s.spec.clusterIP === h);
     if (svc) return pod ? { tipo: 'service', svc, ip: h } : { tipo: 'inalcancavel', ip: h };
     const alvo = c.list('Pod').find((p) => p.status?.podIP === h);
     if (alvo) return pod ? { tipo: 'pod', pod: alvo, ip: h } : { tipo: 'inalcancavel', ip: h };
-    if (h.startsWith('192.168.50.')) return { tipo: 'no', ip: h };
+    if (h === '192.168.50.10') return { tipo: 'no', ip: h };
     return { tipo: 'inalcancavel', ip: h };
   }
   if (!pod) return null;
@@ -148,6 +150,7 @@ function respostaDoPod(c, pod, porta, caminho, https = false) {
   if (porta !== portaTls && (!img.port || img.port !== porta)) return { erro: 'recusada' };
   if (porta !== portaTls && https) return { erro: 'tls-versao' };
   const extra = porta === portaTls ? { cert: tls.cert } : {};
+  if (img.proto === 'chat') return { erro: 'mysql' };
   const nome = img.repo.split('/').slice(-2).join('/');
   const p = pod.metadata.name;
   const v = achada.tag;
@@ -255,6 +258,70 @@ function apiServer(req) {
   return { ...base, status: 403, tipo: 'application/json', corpo: JSON.stringify(corpo, null, 2) + '\n' };
 }
 
+// A estação de trabalho, origem do tráfego externo (LoadBalancer e NodePort).
+const EXTERNO = { ip: '172.25.250.9' };
+
+// Protocolo do processo que escuta na porta do pod, ou null.
+function escuta(c, pod, porta) {
+  if (!podPronto(pod)) return null;
+  const ct = pod.spec.containers[0];
+  const achada = findImage(ct.image);
+  if (achada.error || ct.command || ct.args) return null;
+  const img = achada.image;
+  const tls = img.repo.includes('/nimbus/') ? tlsDaAplicacao(c, pod, ct, resolveEnv(c, pod, ct).env) : null;
+  if (tls && !tls.erro && tls.porta === porta) return 'https';
+  if (img.port === porta) return img.proto || 'http';
+  return null;
+}
+
+// Abre uma conexão TCP. Devolve { pod, porta, proto }, { servidor } ou { erro }.
+export function destinoTcp(c, pod, host, porta) {
+  const alvo = resolve(c, host, pod);
+  if (!alvo) return { erro: 'dns' };
+  if (pod && !/^\d/.test(host) && host !== 'localhost' && !dnsLiberado(c, pod)) return { erro: 'dns' };
+  const origem = pod ? comoOrigem(pod) : EXTERNO;
+  const viaPorta = (svc, sp) => {
+    const eps = endpoints(c, svc);
+    if (!eps.length) return { erro: 'recusada' };
+    const destino = escolhe(c, eps, svc.metadata.uid);
+    const p = portaAlvo(svc, destino, sp);
+    if (!p) return { erro: 'recusada' };
+    if (!permite(c, origem, comoDestino(destino, p))) return { erro: 'bloqueada' };
+    const proto = escuta(c, destino, p);
+    return proto ? { pod: destino, porta: p, proto } : { erro: 'recusada' };
+  };
+  switch (alvo.tipo) {
+    case 'api':
+      return porta === 6443 ? { servidor: 'api' } : { erro: 'recusada' };
+    case 'kube':
+      return porta === 443 ? { servidor: 'api' } : { erro: 'bloqueada' };
+    case 'route':
+    case 'console':
+      return porta === 80 || porta === 443 ? { servidor: 'roteador' } : { erro: 'recusada' };
+    case 'service':
+    case 'lb': {
+      // Um IP que o MetalLB não anuncia não responde a ninguém de fora.
+      if (alvo.tipo === 'lb' && !pod && !c.side.anunciados?.[alvo.ip]) return { erro: 'bloqueada' };
+      const sp = alvo.svc.spec.ports.find((p) => p.port === porta);
+      return sp ? viaPorta(alvo.svc, sp) : { erro: alvo.tipo === 'lb' ? 'bloqueada' : 'recusada' };
+    }
+    case 'no': {
+      const svc = c.list('Service').find((s) => (s.spec.ports || []).some((p) => p.nodePort === porta));
+      if (svc) return viaPorta(svc, svc.spec.ports.find((p) => p.nodePort === porta));
+      if (porta === 80 || porta === 443) return { servidor: 'roteador' };
+      if (porta === 6443) return { servidor: 'api' };
+      return { erro: 'recusada' };
+    }
+    case 'pod': {
+      if (alvo.pod !== pod && !permite(c, origem, comoDestino(alvo.pod, porta))) return { erro: 'bloqueada' };
+      const proto = escuta(c, alvo.pod, porta);
+      return proto ? { pod: alvo.pod, porta, proto } : { erro: 'recusada' };
+    }
+    default:
+      return { erro: 'bloqueada' };
+  }
+}
+
 // Executa uma requisição HTTP. `pod` é a origem (null = estação de trabalho).
 export function requisicao(c, pod, req) {
   const alvo = resolve(c, req.host, pod);
@@ -284,8 +351,15 @@ export function requisicao(c, pod, req) {
       const r = respostaDoPod(c, destino, porta, req.caminho, req.https);
       return r.erro ? { ...r, ip: alvo.ip } : r;
     }
+    case 'lb':
+    case 'no': {
+      const d = destinoTcp(c, pod, req.host, porta);
+      if (d.erro) return { ...d, ip: alvo.ip };
+      if (d.servidor === 'api') return apiServer(req);
+      if (d.servidor === 'roteador') return { status: 503, tipo: 'text/html', corpo: PAGINA_503, ...(req.https ? { cert: ROUTER_CERT } : {}) };
+      return respostaDoPod(c, d.pod, d.porta, req.caminho, req.https);
+    }
     case 'local':
-    case 'no':
       return { erro: 'recusada', ip: alvo.ip };
     default:
       return { erro: 'bloqueada', ip: alvo.ip };

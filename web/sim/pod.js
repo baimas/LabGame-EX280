@@ -7,6 +7,7 @@ import { findImage } from './images.js';
 import { b64, hashNum } from './util.js';
 import { DNS_IP, KUBE_IP } from './net.js';
 import { KUBE_CA, SERVICE_CA, openssl } from './tls.js';
+import { nc, mysql } from './tcp.js';
 
 const WORKDIR = '/opt/app-root/src';
 const SA = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -119,6 +120,8 @@ function comandos(contexto) {
     ps: () => ok(`    PID TTY          TIME CMD\n      1 ?        00:00:02 ${processo}\n     42 pts/0    00:00:00 sh\n     57 pts/0    00:00:00 ps\n`),
     curl,
     openssl,
+    nc,
+    mysql,
     exit: sair,
     logout: sair,
     sh: async (ctx) => shellAninhado(ctx),

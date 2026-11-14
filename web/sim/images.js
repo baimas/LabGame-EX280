@@ -46,7 +46,13 @@ export const IMAGES = [
   img('nimbus/reports', ['4.0', '4.1', 'latest=4.1'], {
     logs: () => ['[reports] scheduler started', '[reports] listening on 0.0.0.0:8080'],
   }),
+  img('nimbus/chat', ['1.0', '1.1', 'latest=1.1'], {
+    port: 9000,
+    proto: 'chat',
+    logs: (v) => [`[chat] nimbus chat server ${v.tag}`, '[chat] listening on tcp 0.0.0.0:9000'],
+  }),
   img('rhel9/mysql-80', ['1-228', 'latest=1-228'], {
+    proto: 'mysql',
     port: 3306,
     user: '27',
     size: '172.1MB',

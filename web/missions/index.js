@@ -25,6 +25,10 @@ import passthrough from './c4/passthrough.js';
 import serviceCa from './c4/service-ca.js';
 import netpolIsola from './c4/netpol-isola.js';
 import netpolConserto from './c4/netpol-conserto.js';
+import loadbalancer from './c5/loadbalancer.js';
+import metallb from './c5/metallb.js';
+import nodeport from './c5/nodeport.js';
+import troubleshootLb from './c5/troubleshoot.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
@@ -32,7 +36,7 @@ export const CHAPTERS = [
   { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [replicasets, servicos, templates, templateProprio, helmInstall, helmUpgrade] },
   { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [htpasswdMissao, usuarios, gruposMissao, papelProprio, kubeadmin] },
   { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [edge, passthrough, serviceCa, netpolIsola, netpolConserto] },
-  { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [] },
+  { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [loadbalancer, metallb, nodeport, troubleshootLb] },
   { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [] },
   { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [] },
   { id: 'c8', title: { pt: 'Segurança de aplicações', en: 'Application security' }, domain: { pt: 'Service accounts, SCC, jobs e cron jobs', en: 'Service accounts, SCCs, jobs, and cron jobs' }, missions: [] },
@@ -79,5 +83,9 @@ const OBJETIVOS_EN = {
   'Configurar network policies de aplicações': 'Configure application network policies',
   'Controlar o tráfego de entrada (ingress) do cluster': 'Control cluster network ingress',
   'Solucionar problemas de rede definida por software (SDN)': 'Troubleshoot software-defined networking',
+  'Configurar um service do tipo load balancer': 'Configure a load balancer service',
+  'Expor aplicações não HTTP/SNI': 'Expose non-HTTP/SNI applications',
+  'Configurar acesso externo às aplicações': 'Configure external access to applications',
+  'Configurar componentes de rede': 'Configure networking components',
 };
 export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);

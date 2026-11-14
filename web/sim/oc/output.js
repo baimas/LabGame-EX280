@@ -88,6 +88,14 @@ const COLUNAS = {
       return [pares.join(',') || '<none>', idade(o, c)];
     },
   },
+  IPAddressPool: {
+    head: ['NAME', 'AUTO ASSIGN', 'AVOID BUGGY IPS', 'ADDRESSES'],
+    row: (o) => [String(o.spec?.autoAssign !== false), String(Boolean(o.spec?.avoidBuggyIPs)), JSON.stringify(o.spec?.addresses || [])],
+  },
+  L2Advertisement: {
+    head: ['NAME', 'IPADDRESSPOOLS', 'IPADDRESSPOOL SELECTORS', 'INTERFACES'],
+    row: (o) => [o.spec?.ipAddressPools ? JSON.stringify(o.spec.ipAddressPools) : '', o.spec?.ipAddressPoolSelectors ? JSON.stringify(o.spec.ipAddressPoolSelectors) : '', o.spec?.interfaces ? JSON.stringify(o.spec.interfaces) : ''],
+  },
   Template: {
     head: ['NAME', 'DESCRIPTION', 'PARAMETERS', 'OBJECTS'],
     row: (o) => {
@@ -322,9 +330,11 @@ const DESCRICOES = {
     let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
     s += campo('Selector', labelsText(o.spec.selector)) + campo('Type', o.spec.type) + campo('IP Family Policy', 'SingleStack') + campo('IP Families', 'IPv4');
     s += campo('IP', o.spec.clusterIP) + campo('IPs', o.spec.clusterIP);
+    if (o.status?.loadBalancer?.ingress?.[0]) s += campo('LoadBalancer Ingress', `${o.status.loadBalancer.ingress[0].ip} (VIP)`);
     const pods = endpoints(c, o);
     for (const p of o.spec.ports || []) {
       s += campo('Port', `${p.name || '<unset>'}  ${p.port}/${p.protocol}`) + campo('TargetPort', `${p.targetPort}/${p.protocol}`);
+      if (p.nodePort) s += campo('NodePort', `${p.name || '<unset>'}  ${p.nodePort}/${p.protocol}`);
       s += campo('Endpoints', pods.map((x) => `${x.status.podIP}:${p.targetPort}`).join(',') || '<none>');
     }
     return s + campo('Session Affinity', 'None') + eventosDe(o, c);

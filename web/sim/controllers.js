@@ -15,6 +15,85 @@ export function reconcile(c) {
   endpointsCtl(c);
   oauthCtl(c);
   serviceCaCtl(c);
+  metallbCtl(c);
+}
+
+// Endereços de um pool: faixas `a.b.c.d-a.b.c.e` ou CIDR.
+export function enderecosDoPool(pool) {
+  const num = (ip) => ip.split('.').reduce((n, p) => n * 256 + Number(p), 0);
+  const ip = (n) => [24, 16, 8, 0].map((s) => (n >>> s) & 255).join('.');
+  const out = [];
+  for (const faixa of pool.spec?.addresses || []) {
+    let [ini, fim] = faixa.split('-').map((x) => x.trim());
+    if (!fim && ini.includes('/')) {
+      const [base, bits] = ini.split('/');
+      const tam = 2 ** (32 - Number(bits));
+      ini = ip(num(base));
+      fim = ip(num(base) + tam - 1);
+    }
+    fim ??= ini;
+    for (let n = num(ini); n <= num(fim) && out.length < 1024; n++) out.push(ip(n));
+  }
+  return out;
+}
+
+// MetalLB: dá IPs dos pools aos services LoadBalancer e marca quais são anunciados.
+function metallbCtl(c) {
+  const NS = 'metallb-system';
+  const ativo = c.list('MetalLB', NS).length > 0;
+  const pools = c.list('IPAddressPool', NS);
+  const anuncios = c.list('L2Advertisement', NS);
+  const usados = new Map();
+  for (const s of c.list('Service')) if (s.spec.type !== 'LoadBalancer' && s.status?.loadBalancer) delete s.status.loadBalancer;
+  const lbs = c.list('Service').filter((s) => s.spec.type === 'LoadBalancer');
+  for (const s of lbs) {
+    const ip = s.status?.loadBalancer?.ingress?.[0]?.ip;
+    if (ip) usados.set(ip, s.metadata.uid);
+  }
+  c.side.anunciados = {};
+  for (const svc of lbs) {
+    const anot = svc.metadata.annotations || {};
+    const pedidos = (anot['metallb.universe.tf/loadBalancerIPs'] || svc.spec.loadBalancerIP || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const poolPedido = anot['metallb.universe.tf/address-pool'];
+    const atual = svc.status?.loadBalancer?.ingress?.[0]?.ip;
+    const poolDe = (ip) => pools.find((p) => enderecosDoPool(p).includes(ip));
+    const valido = (ip) => {
+      const p = poolDe(ip);
+      if (!p || (poolPedido && p.metadata.name !== poolPedido)) return false;
+      return !pedidos.length || pedidos.includes(ip);
+    };
+    let ip = ativo && atual && valido(atual) ? atual : null;
+    if (atual && !ip) {
+      usados.delete(atual);
+      delete svc.status.loadBalancer;
+    }
+    if (ativo && !ip) {
+      const candidatos = pedidos.length ? pedidos : pools.filter((p) => (poolPedido ? p.metadata.name === poolPedido : p.spec.autoAssign !== false)).flatMap(enderecosDoPool);
+      ip = candidatos.find((x) => poolDe(x) && (!poolPedido || poolDe(x).metadata.name === poolPedido) && (!usados.has(x) || usados.get(x) === svc.metadata.uid));
+      const st = (c.side[svc.metadata.uid] ??= { ev: {} });
+      if (ip) {
+        usados.set(ip, svc.metadata.uid);
+        svc.status = { ...(svc.status || {}), loadBalancer: { ingress: [{ ip, ipMode: 'VIP' }] } };
+        c.event(svc, 'Normal', 'IPAllocated', `Assigned IP ["${ip}"]`, 'metallb-controller');
+      } else {
+        const motivo = pedidos.length ? `["${pedidos.join('", "')}"] is not allowed in config` : poolPedido && !pools.some((p) => p.metadata.name === poolPedido) ? `pool ${poolPedido} does not exist` : 'no available IPs';
+        const chave = `falha:${motivo}`;
+        if (!st.ev[chave]) {
+          st.ev[chave] = 1;
+          c.event(svc, 'Warning', 'AllocationFailed', `Failed to allocate IP for "${svc.metadata.namespace}/${svc.metadata.name}": ${motivo}`, 'metallb-controller');
+        }
+      }
+    }
+    if (!ip) continue;
+    const pool = poolDe(ip);
+    const anunciado = anuncios.some((a) => !(a.spec?.ipAddressPools || []).length || a.spec.ipAddressPools.includes(pool.metadata.name));
+    c.side.anunciados[ip] = anunciado;
+    const st = (c.side[svc.metadata.uid] ??= { ev: {} });
+    if (anunciado && !st.ev[`anuncio:${ip}`]) {
+      st.ev[`anuncio:${ip}`] = 1;
+      c.event(svc, 'Normal', 'nodeAssigned', 'announcing from node "master01" with protocol "layer2"', 'metallb-speaker');
+    }
+  }
 }
 
 // Service CA: emite certificados para services anotados e injeta o CA bundle em config maps.

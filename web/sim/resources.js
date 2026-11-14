@@ -49,6 +49,9 @@ export const KINDS = [
   def('Template', 'templates', [], true, 'template.openshift.io/v1'),
   def('ImageStream', 'imagestreams', ['is'], true, 'image.openshift.io/v1'),
   def('SecurityContextConstraints', 'securitycontextconstraints', ['scc'], false, 'security.openshift.io/v1'),
+  def('MetalLB', 'metallbs', [], true, 'metallb.io/v1beta1'),
+  def('IPAddressPool', 'ipaddresspools', [], true, 'metallb.io/v1beta1'),
+  def('L2Advertisement', 'l2advertisements', [], true, 'metallb.io/v1beta1'),
   def('ClusterResourceQuota', 'clusterresourcequotas', ['clusterquota'], false, 'quota.openshift.io/v1'),
 ];
 

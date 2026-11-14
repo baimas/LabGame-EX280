@@ -25,6 +25,8 @@ const COMPONENTES = [
   ['openshift-authentication', 'oauth-openshift', 1],
   ['openshift-image-registry', 'image-registry', 1],
   ['openshift-dns', 'dns-operator', 1],
+  ['metallb-system', 'metallb-operator-controller-manager', 1],
+  ['metallb-system', 'controller', 1],
 ];
 
 export function seed(c) {
@@ -47,7 +49,13 @@ const ROTULOS = {
 function objetosBase() {
   // Usuários do laboratório: admin (cluster-admin) e developer, no provedor HTPasswd `localusers`.
   const htpasswd = `admin:${hashSenha('redhatocp', 'bcrypt', 'Nimbus0AdminSaltLab280')}\ndeveloper:${hashSenha('developer', 'bcrypt', 'Nimbus0DevelSaltLab280')}\n`;
-  return [...TEMPLATES.map((t) => JSON.parse(JSON.stringify(t))), ...objetosIniciais(htpasswd)];
+  return [
+    ...TEMPLATES.map((t) => JSON.parse(JSON.stringify(t))),
+    ...objetosIniciais(htpasswd),
+    // Operator do MetalLB instalado, sem pools de endereços configurados.
+    { kind: 'Namespace', metadata: { name: 'metallb-system', labels: { 'openshift.io/cluster-monitoring': 'true' } } },
+    { kind: 'MetalLB', metadata: { name: 'metallb', namespace: 'metallb-system' }, spec: { logLevel: 'info' } },
+  ];
 }
 
 // Sessões salvas por versões antigas do jogo: completa o que faltar no cluster.
