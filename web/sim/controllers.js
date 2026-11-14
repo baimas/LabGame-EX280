@@ -2,6 +2,7 @@
 // de vida dos pods (agendamento, pull de imagem, configuração, execução).
 import { clone, rand, hashId, matchLabels, parseCpu, parseMem, b64 } from './util.js';
 import { findImage } from './images.js';
+import { oauthCtl } from './rbac.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
@@ -11,6 +12,7 @@ export function reconcile(c) {
   }
   deployments(c);
   endpointsCtl(c);
+  oauthCtl(c);
 }
 
 // Mantém um objeto Endpoints por service, com os pods prontos e não prontos.

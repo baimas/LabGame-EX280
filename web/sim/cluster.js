@@ -24,7 +24,6 @@ export class Cluster {
   constructor({ vazio = false } = {}) {
     this.objs = new Map();
     this.side = {}; // estado interno dos controllers, por uid
-    this.users = { admin: 'redhatocp', developer: 'developer' };
     this.now = Math.floor(Date.now() / 1000);
     this.seq = 1;
     this.ipSeq = 20;
@@ -248,13 +247,13 @@ export class Cluster {
   }
 
   serialize() {
-    return { objs: [...this.objs.entries()], side: this.side, users: this.users, now: this.now, seq: this.seq, ipSeq: this.ipSeq };
+    return { objs: [...this.objs.entries()], side: this.side, now: this.now, seq: this.seq, ipSeq: this.ipSeq };
   }
 
   static restore(d) {
     const c = new Cluster({ vazio: true });
     c.objs = new Map(d.objs);
-    Object.assign(c, { side: d.side, users: d.users, seq: d.seq, ipSeq: d.ipSeq });
+    Object.assign(c, { side: d.side, seq: d.seq, ipSeq: d.ipSeq });
     // O relógio retoma de onde parou; o tempo fora do jogo não conta.
     c.now = d.now;
     return c;

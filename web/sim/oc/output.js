@@ -57,6 +57,29 @@ const COLUNAS = {
     head: ['NAME', 'HOST/PORT', 'PATH', 'SERVICES', 'PORT', 'TERMINATION', 'WILDCARD'],
     row: (o) => [o.spec.host, o.spec.path || '', o.spec.to.name, o.spec.port?.targetPort ?? '<all>', o.spec.tls ? o.spec.tls.termination + (o.spec.tls.insecureEdgeTerminationPolicy ? '/' + o.spec.tls.insecureEdgeTerminationPolicy : '') : '', o.spec.wildcardPolicy],
   },
+  User: {
+    head: ['NAME', 'UID', 'FULL NAME', 'IDENTITIES'],
+    row: (o) => [o.metadata.uid, o.fullName || '', (o.identities || []).join(', ')],
+  },
+  Group: { head: ['NAME', 'USERS'], row: (o) => [(o.users || []).join(', ')] },
+  Identity: {
+    head: ['NAME', 'IDP NAME', 'IDP USER NAME', 'USER NAME', 'USER UID'],
+    row: (o) => [o.providerName, o.providerUserName, o.user?.name || '', o.user?.uid || ''],
+  },
+  RoleBinding: {
+    head: ['NAME', 'ROLE', 'AGE'],
+    row: (o, c) => [`${o.roleRef.kind}/${o.roleRef.name}`, idade(o, c)],
+    wideHead: ['USERS', 'GROUPS', 'SERVICEACCOUNTS'],
+    wide: (o) => ['User', 'Group', 'ServiceAccount'].map((t) => (o.subjects || []).filter((s) => s.kind === t).map((s) => (t === 'ServiceAccount' ? `${s.namespace}/${s.name}` : s.name)).join(', ')),
+  },
+  ClusterRoleBinding: {
+    head: ['NAME', 'ROLE', 'AGE'],
+    row: (o, c) => [`${o.roleRef.kind}/${o.roleRef.name}`, idade(o, c)],
+    wideHead: ['USERS', 'GROUPS', 'SERVICEACCOUNTS'],
+    wide: (o) => ['User', 'Group', 'ServiceAccount'].map((t) => (o.subjects || []).filter((s) => s.kind === t).map((s) => (t === 'ServiceAccount' ? `${s.namespace}/${s.name}` : s.name)).join(', ')),
+  },
+  Role: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
+  ClusterRole: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
   Template: {
     head: ['NAME', 'DESCRIPTION', 'PARAMETERS', 'OBJECTS'],
     row: (o) => {
@@ -213,7 +236,28 @@ function volumes(lista) {
   return s;
 }
 
+function descreveBinding(o) {
+  let s = campo('Name', o.metadata.name) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
+  s += `Role:\n  Kind:  ${o.roleRef.kind}\n  Name:  ${o.roleRef.name}\nSubjects:\n`;
+  s += table([['  Kind', 'Name', 'Namespace'], ['  ----', '----', '---------'], ...(o.subjects || []).map((x) => ['  ' + x.kind, x.name, x.namespace || ''])]);
+  return s;
+}
+
+function descrevePapel(o) {
+  let s = campo('Name', o.metadata.name) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations) + 'PolicyRule:\n';
+  const linhas = [['  Resources', 'Non-Resource URLs', 'Resource Names', 'Verbs'], ['  ---------', '-----------------', '--------------', '-----']];
+  for (const r of o.rules || []) {
+    if (r.nonResourceURLs) linhas.push(['  ', `[${r.nonResourceURLs.join(' ')}]`, '[]', `[${r.verbs.join(' ')}]`]);
+    for (const g of r.apiGroups || []) for (const res of r.resources || []) linhas.push(['  ' + (g ? `${res}.${g}` : res), '[]', `[${(r.resourceNames || []).join(' ')}]`, `[${r.verbs.join(' ')}]`]);
+  }
+  return s + table(linhas);
+}
+
 const DESCRICOES = {
+  RoleBinding: descreveBinding,
+  ClusterRoleBinding: descreveBinding,
+  Role: descrevePapel,
+  ClusterRole: descrevePapel,
   Template(o) {
     const c2 = (r, v) => `${(r + ':').padEnd(16)}${v}\n`;
     let s = c2('Name', o.metadata.name) + c2('Namespace', o.metadata.namespace) + c2('Created', o.metadata.creationTimestamp);

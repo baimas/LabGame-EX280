@@ -15,6 +15,9 @@ import { ajuda } from './help.js';
 import { explain as explica } from './explain.js';
 import { contextoPod } from '../pod.js';
 import { processa, parametros } from '../template.js';
+import { autentica, pode, grupos } from '../rbac.js';
+import { comUsuario, exige } from '../autoriza.js';
+import { GERADORES_RBAC, authCmd, admIdentidade } from './identidade.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
 
@@ -48,7 +51,8 @@ function seleciona(ctx, pos, f, verbo) {
   const todos = f.has('all-namespaces');
   return alvos(pos, verbo).map(({ k, nomes }) => {
     const r = c.tipo(k.kind);
-    let itens = nomes.length ? nomes.map((n) => c.must(r.kind, n, ns)) : c.list(r.kind, r.namespaced && !todos ? ns : null);
+    const tipoLista = k.alias ? k.kind : r.kind;
+    let itens = nomes.length ? nomes.map((n) => c.must(tipoLista, n, ns)) : c.list(tipoLista, r.namespaced && !todos ? ns : null);
     if (f.has('selector')) {
       const sel = parseSelector(String(f.one('selector')));
       itens = itens.filter((o) => sel(o.metadata.labels));
@@ -439,6 +443,7 @@ const GERADORES = {
     return rota;
   },
 };
+Object.assign(GERADORES, GERADORES_RBAC);
 GERADORES.ns = GERADORES.namespace;
 
 // Subcomandos de `oc create` que existem no oc real.
@@ -532,11 +537,16 @@ function newProject(ctx) {
   const c = ctx.env.cluster;
   const nome = pos[0];
   if (!nome) throw erro('error: must have exactly one argument');
-  if (c.get('Namespace', nome)) throw erro(`Error from server (AlreadyExists): project.project.openshift.io "${nome}" already exists`);
-  const anot = { 'openshift.io/requester': ctx.env.session.user };
+  const real = ctx.env.clusterReal || c;
+  const usuario = ctx.env.usuario || ctx.env.session.user;
+  if (!pode(real, usuario, 'create', 'projectrequests', 'project.openshift.io', null, undefined, ctx.env.gruposExtras)) throw erro('Error from server (Forbidden): You may not request a new project via this API.');
+  if (real.get('Namespace', nome)) throw erro(`Error from server (AlreadyExists): project.project.openshift.io "${nome}" already exists`);
+  const anot = { 'openshift.io/requester': usuario };
   if (f.has('display-name')) anot['openshift.io/display-name'] = f.one('display-name');
   if (f.has('description')) anot['openshift.io/description'] = f.one('description');
-  c.create({ kind: 'Namespace', metadata: { name: nome, annotations: anot } });
+  real.create({ kind: 'Namespace', metadata: { name: nome, annotations: anot } });
+  // Quem pede o projeto vira admin dele.
+  real.create({ kind: 'RoleBinding', metadata: { name: 'admin', namespace: nome }, roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: 'admin' }, subjects: [{ apiGroup: 'rbac.authorization.k8s.io', kind: 'User', name: usuario }] });
   ctx.env.session.namespace = nome;
   return ok(`Now using project "${nome}" on server "${SERVER}".\n\nYou can add applications to this project with the 'new-app' command. For example, try:\n\n    oc new-app rails-postgresql-example\n\nto build a new example application in Ruby. Or use kubectl to deploy a simple Kubernetes application:\n\n    kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.43 -- /agnhost serve-hostname\n\n`);
 }
@@ -545,7 +555,11 @@ function project(ctx) {
   const { pos } = parseArgs(ctx.args);
   const s = ctx.env.session;
   if (!pos.length) return ok(`Using project "${s.namespace}" on server "${SERVER}".\n`);
-  if (!ctx.env.cluster.get('Namespace', pos[0])) throw erro(`error: A project named "${pos[0]}" does not exist on "${SERVER}".\nYour projects are:\n${ctx.env.cluster.list('Namespace').map((n) => '* ' + n.metadata.name).join('\n')}`);
+  const visiveis = ctx.env.cluster.list('Project').map((n) => n.metadata.name);
+  if (!visiveis.includes(pos[0])) {
+    if (!(ctx.env.clusterReal || ctx.env.cluster).get('Namespace', pos[0])) throw erro(`error: A project named "${pos[0]}" does not exist on "${SERVER}".\nYour projects are:\n${visiveis.map((n) => '* ' + n).join('\n')}\nTo see projects on another server, pass '--server=<server>'.`);
+    throw erro(`error: You are not a member of project "${pos[0]}".\nYour projects are:\n${visiveis.map((n) => '* ' + n).join('\n')}`);
+  }
   if (s.namespace === pos[0]) return ok(`Already on project "${pos[0]}" on server "${SERVER}".\n`);
   s.namespace = pos[0];
   return ok(`Now using project "${pos[0]}" on server "${SERVER}".\n`);
@@ -553,7 +567,8 @@ function project(ctx) {
 
 function projects(ctx) {
   const s = ctx.env.session;
-  const nomes = ctx.env.cluster.list('Namespace').map((n) => n.metadata.name);
+  const nomes = ctx.env.cluster.list('Project').map((n) => n.metadata.name);
+  if (!nomes.length) return ok("You are not a member of any projects. You can request a project to be created with the 'new-project' command.\n");
   return ok(`You have access to the following projects and can switch between them with ' project <projectname>':\n\n${nomes.map((n) => (n === s.namespace ? '  * ' : '    ') + n).join('\n')}\n\nUsing project "${s.namespace}" on server "${SERVER}".\n`);
 }
 
@@ -561,7 +576,7 @@ const tokenDe = (u) => `sha256~${hashNum(u).toString(36)}SimuladoNaoEhUmTokenRea
 
 async function login(ctx) {
   const { pos, f } = parseArgs(ctx.args);
-  const c = ctx.env.cluster;
+  const c = ctx.env.clusterReal || ctx.env.cluster;
   const servidor = f.one('server') || pos[0];
   if (servidor) {
     const host = String(servidor).replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -569,22 +584,35 @@ async function login(ctx) {
   }
   let u = f.one('username');
   let p = f.one('password') ?? f.one('patch');
+  let usuario;
   if (f.has('token')) {
-    u = Object.keys(c.users).find((x) => tokenDe(x) === f.one('token'));
-    if (!u) return { err: 'error: The token provided is invalid or expired.\n\n', code: 1 };
-    p = c.users[u];
+    usuario = [...c.list('User').map((x) => x.metadata.name), 'kube:admin', 'admin'].find((x) => tokenDe(x) === f.one('token'));
+    if (!usuario) return { err: 'error: The token provided is invalid or expired.\n\n', code: 1 };
+  } else {
+    const perguntar = (!u || u === true) || p === undefined || p === true;
+    if (perguntar) {
+      if (!ctx.env.ask) throw naoSimulado(ctx, ctx.env.t('oc login interativo', 'interactive oc login'));
+      emite(ctx, `Authentication required for ${SERVER} (openshift)\n`);
+      if (!u || u === true) u = (await ctx.env.ask('Username: ')).trim();
+      if (p === undefined || p === true) p = await ctx.env.ask('Password: ', true);
+    }
+    const r = autentica(c, u, p);
+    if (r.erro) return { err: 'Login failed (401 Unauthorized)\nVerify you have provided the correct credentials.\n', code: 1 };
+    usuario = r.usuario;
   }
-  const perguntar = (!u || u === true) || p === undefined || p === true;
-  if (perguntar) {
-    if (!ctx.env.ask) throw naoSimulado(ctx, ctx.env.t('oc login interativo', 'interactive oc login'));
-    emite(ctx, `Authentication required for ${SERVER} (openshift)\n`);
-    if (!u || u === true) u = (await ctx.env.ask('Username: ')).trim();
-    if (p === undefined || p === true) p = await ctx.env.ask('Password: ', true);
+  const s = ctx.env.session;
+  s.user = usuario;
+  const visiveis = comUsuario(ctx, usuario).env.cluster.list('Project').map((n) => n.metadata.name);
+  let out = 'Login successful.\n\n';
+  if (!visiveis.length) {
+    out += "You don't have any projects. You can try to create a new project, by running\n\n    oc new-project <projectname>\n\n";
+    return ok(out);
   }
-  if (c.users[u] !== p) return { err: 'Login failed (401 Unauthorized)\nVerify you have provided the correct credentials.\n', code: 1 };
-  ctx.env.session.user = u;
-  const n = c.list('Namespace').length;
-  return ok(`Login successful.\n\nYou have access to ${n} projects, the list has been suppressed. You can list all projects with 'oc projects'\n\nUsing project "${ctx.env.session.namespace}".\n`);
+  if (!visiveis.includes(s.namespace)) s.namespace = visiveis.includes('default') ? 'default' : visiveis[0];
+  if (visiveis.length === 1) out += `You have one project on this server: "${visiveis[0]}"\n\n`;
+  else if (visiveis.length > 10) out += `You have access to ${visiveis.length} projects, the list has been suppressed. You can list all projects with 'oc projects'\n\n`;
+  else out += `You have access to the following projects and can switch between them with 'oc project <projectname>':\n\n${visiveis.map((n) => (n === s.namespace ? '  * ' : '    ') + n).join('\n')}\n\n`;
+  return ok(out + `Using project "${s.namespace}".\n`);
 }
 
 function whoami(ctx) {
@@ -592,7 +620,7 @@ function whoami(ctx) {
   if (f.has('show-server')) return ok(SERVER + '\n');
   if (f.has('show-console')) return ok(`https://console-openshift-console.${APPS_DOMAIN}\n`);
   if (f.has('show-token') || f.has('t')) return ok(`${tokenDe(ctx.env.session.user)}\n`);
-  return ok(ctx.env.session.user + '\n');
+  return ok(ctx.env.usuario + '\n');
 }
 
 // ------------------------------------------------------- new-app / expose
@@ -777,12 +805,32 @@ function quais(spec, f) {
   return lista;
 }
 
+// `oc set data`: troca chaves de um secret ou config map (ex.: o htpasswd do OAuth).
+function setData(ctx, args) {
+  const { pos, f } = parseArgs(args);
+  const c = ctx.env.cluster;
+  const { k, nome, resto } = umAlvo(pos, 'set data');
+  if (k.kind !== 'Secret' && k.kind !== 'ConfigMap') throw erro(`error: ${k.plural}/${nome} is not a secret or config map`);
+  const o = clone(c.must(k.kind, nome, nsDe(ctx, f)));
+  const novos = dadosDe(ctx, f);
+  for (const it of resto) {
+    if (/^[^=]+-$/.test(it)) delete (o.data ??= {})[it.slice(0, -1)];
+    else if (it.includes('=')) novos[it.slice(0, it.indexOf('='))] = it.slice(it.indexOf('=') + 1);
+    else throw erro(`error: invalid key "${it}"`);
+  }
+  o.data ??= {};
+  for (const [chave, v] of Object.entries(novos)) o.data[chave] = k.kind === 'Secret' ? b64.enc(v) : v;
+  c.update(o);
+  return ok(`${k.out}/${nome} data updated\n`);
+}
+
 function set(ctx) {
   let [sub, ...resto] = ctx.args;
   const { pos, f } = parseArgs(resto, ['read-only']);
   const c = ctx.env.cluster;
   const ns = nsDe(ctx, f);
   if (sub === 'volumes') sub = 'volume';
+  if (sub === 'data') return setData(ctx, resto);
   if (!sub) return ok(ajuda(['set']));
   if (!['env', 'image', 'resources', 'volume'].includes(sub)) {
     if (['build-hook', 'build-secret', 'data', 'deployment-hook', 'image-lookup', 'probe', 'route-backends', 'selector', 'serviceaccount', 'subject', 'triggers'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub}`);
@@ -1127,6 +1175,7 @@ async function logs(ctx) {
   const { pos, f } = parseArgs(ctx.args, ['patch', 'filename']);
   const c = ctx.env.cluster;
   const { pod, aviso = '' } = achaPod(ctx, pos[0], nsDe(ctx, f), 'logs');
+  exige(ctx, 'get', 'pods/log', '', pod.metadata.namespace, pod.metadata.name);
   const ct = f.one('container') || pos[1] || pod.spec.containers[0].name;
   if (!pod.spec.containers.some((x) => x.name === ct)) throw erro(`error: container ${ct} is not valid for pod ${pod.metadata.name}`);
   const reg = c.side[pod.metadata.uid]?.logs?.[ct];
@@ -1183,6 +1232,7 @@ async function exec(ctx, rsh = false) {
   const resto = partes.traco || partes.comando.length ? partes.comando : null;
   const c = ctx.env.cluster;
   const { pod } = achaPod(ctx, pos[0], nsDe(ctx, f), rsh ? 'rsh' : 'exec');
+  exige(ctx, 'create', 'pods/exec', '', pod.metadata.namespace, pod.metadata.name);
   const nomeCt = f.one('container') || pod.spec.containers[0].name;
   const ct = pod.spec.containers.find((x) => x.name === nomeCt);
   if (!ct) throw erro(`error: container ${nomeCt} not found in pod ${pod.metadata.name}`);
@@ -1329,6 +1379,8 @@ function apiResources() {
 function adm(ctx) {
   const [sub, oque, ...resto] = ctx.args;
   const c = ctx.env.cluster;
+  const id = admIdentidade(ctx, sub, [oque, ...resto].filter((x) => x !== undefined));
+  if (id) return id;
   if (sub !== 'top') throw naoSimulado(ctx, `oc adm ${sub ?? ''}`.trim());
   const { f } = parseArgs(resto);
   if (/^nodes?$/.test(oque)) {
@@ -1386,6 +1438,32 @@ export function skopeo(ctx) {
   return ok(JSON.stringify({ Name: a.image.repo, Digest: a.digest, RepoTags: Object.keys(a.image.tags), Created: '2026-10-20T09:14:02Z', DockerVersion: '', Labels: { version: a.tag }, Architecture: 'amd64', Os: 'linux', Layers: [0, 1, 2, 3].map((n) => `sha256:${hashNum(a.digest + n).toString(16).padStart(8, '0').repeat(8)}`), Env: [`APP_VERSION=${a.tag}`] }, null, 4) + '\n');
 }
 
+function replace(ctx) {
+  const { f } = parseArgs(ctx.args, ['force']);
+  const c = ctx.env.cluster;
+  const ns = nsDe(ctx, f);
+  let out = '';
+  for (const bruto of lerManifestos(ctx, f)) {
+    const o = clone(normaliza(bruto));
+    const k = c.tipo(o.kind);
+    if (k.namespaced) o.metadata.namespace ??= ns;
+    const atual = c.get(k.kind, o.metadata.name, o.metadata.namespace);
+    if (f.has('force')) {
+      if (atual) c.delete(k.kind, o.metadata.name, o.metadata.namespace);
+      delete o.metadata.uid;
+      delete o.metadata.resourceVersion;
+      c.create(o);
+      out += `${tipoOuErro(bruto.kind).out}/${o.metadata.name} replaced\n`;
+      continue;
+    }
+    if (!atual) throw erro(`Error from server (NotFound): error when replacing "${f.one('filename')}": ${k.resource} "${o.metadata.name}" not found`);
+    o.status = atual.status;
+    c.update(o);
+    out += `${tipoOuErro(bruto.kind).out}/${o.metadata.name} replaced\n`;
+  }
+  return ok(out);
+}
+
 function explain(ctx) {
   const { pos, f } = parseArgs(ctx.args);
   if (!pos[0]) throw erro('error: You must specify the type of resource to explain. Use "oc api-resources" for a complete list of supported resources.');
@@ -1401,10 +1479,14 @@ const OC_REAIS = ['adm', 'annotate', 'api-resources', 'api-versions', 'apply', '
 const SUBS = {
   get, describe, apply, create, delete: del, 'new-project': newProject, project, projects, login, whoami,
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
-  patch, edit, rollout, logs, process, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
+  patch, edit, rollout, logs, process, replace, auth: authCmd, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
   'cluster-info': () => ok(`Kubernetes control plane is running at ${SERVER}\n\nTo further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.\n`),
   events: (ctx) => get({ ...ctx, args: ['events', ...ctx.args] }),
-  logout: (ctx) => ok(`Logged "${ctx.env.session.user}" out on "${SERVER}"\n`),
+  logout: (ctx) => {
+    const u = ctx.env.session.user;
+    ctx.env.session.user = null;
+    return ok(`Logged "${u}" out on "${SERVER}"\n`);
+  },
 };
 
 export async function oc(ctx) {
@@ -1418,12 +1500,30 @@ export async function oc(ctx) {
   }
   // Ajuda só vale para as opções antes do `--`.
   const antes = resto.includes('--') ? resto.slice(0, resto.indexOf('--')) : resto;
+  // --as e --as-group: o comando roda com a identidade de outro usuário.
+  let como = null;
+  const comoGrupos = [];
+  const args = [];
+  for (let i = 0; i < resto.length; i++) {
+    const a = resto[i];
+    if (i < antes.length && (a === '--as' || a === '--as-group')) (a === '--as' ? (como = resto[++i]) : comoGrupos.push(resto[++i]));
+    else if (i < antes.length && a.startsWith('--as=')) como = a.slice(5);
+    else if (i < antes.length && a.startsWith('--as-group=')) comoGrupos.push(a.slice(11));
+    else args.push(a);
+  }
   if (antes.includes('--help') || antes.includes('-h')) {
     const texto = ajuda([sub, ...antes]);
     if (texto) return ok(texto);
     throw naoSimulado(ctx, `oc ${sub} --help`);
   }
-  return fn({ ...ctx, args: resto });
+  const sessao = ctx.env.session.user;
+  if (!sessao && !['login', 'version', 'logout'].includes(sub)) throw erro('error: You must be logged in to the server (Unauthorized)');
+  const real = ctx.env.clusterReal || ctx.env.cluster;
+  if ((como || comoGrupos.length) && !pode(real, sessao, 'impersonate', como ? 'users' : 'groups', '', null, como || comoGrupos[0])) {
+    throw erro(`Error from server (Forbidden): ${como ? 'users' : 'groups'} "${como || comoGrupos[0]}" is forbidden: User "${sessao}" cannot impersonate resource "${como ? 'users' : 'groups'}" in API group "" at the cluster scope`);
+  }
+  const contexto = sessao ? comUsuario(ctx, como || sessao, comoGrupos) : ctx;
+  return fn({ ...contexto, args });
 }
 
 export const OC_SUBS = Object.keys(SUBS).sort();

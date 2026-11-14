@@ -1,5 +1,6 @@
 // Estado inicial do cluster: um OpenShift de nó único, como nos laboratórios.
 import { TEMPLATES } from './catalogo.js';
+import { objetosIniciais, hashSenha } from './rbac.js';
 
 export const VERSAO = '4.18.6';
 export const KUBE = 'v1.31.6';
@@ -31,13 +32,37 @@ export function seed(c) {
   c.ocupado = true;
   c.now = agora - 30 * 86400;
 
-  // Labels que as network policies usam para liberar o tráfego do roteador e do monitoramento.
-  const ROTULOS = {
-    'openshift-ingress': { 'network.openshift.io/policy-group': 'ingress', 'policy-group.network.openshift.io/ingress': '' },
-    'openshift-monitoring': { 'network.openshift.io/policy-group': 'monitoring', 'policy-group.network.openshift.io/monitoring': '' },
-  };
   for (const nome of NAMESPACES) c.create({ kind: 'Namespace', metadata: { name: nome, labels: ROTULOS[nome] } });
-  for (const t of TEMPLATES) c.create(JSON.parse(JSON.stringify(t)));
+  for (const o of objetosBase()) c.create(o);
+  seedResto(c, agora);
+}
+
+// Labels que as network policies usam para liberar o tráfego do roteador e do monitoramento.
+const ROTULOS = {
+  'openshift-ingress': { 'network.openshift.io/policy-group': 'ingress', 'policy-group.network.openshift.io/ingress': '' },
+  'openshift-monitoring': { 'network.openshift.io/policy-group': 'monitoring', 'policy-group.network.openshift.io/monitoring': '' },
+};
+
+// Templates, papéis, OAuth e usuários iniciais do laboratório.
+function objetosBase() {
+  // Usuários do laboratório: admin (cluster-admin) e developer, no provedor HTPasswd `localusers`.
+  const htpasswd = `admin:${hashSenha('redhatocp', 'bcrypt', 'Nimbus0AdminSaltLab280')}\ndeveloper:${hashSenha('developer', 'bcrypt', 'Nimbus0DevelSaltLab280')}\n`;
+  return [...TEMPLATES.map((t) => JSON.parse(JSON.stringify(t))), ...objetosIniciais(htpasswd)];
+}
+
+// Sessões salvas por versões antigas do jogo: completa o que faltar no cluster.
+export function migra(c) {
+  for (const [nome, labels] of Object.entries(ROTULOS)) {
+    const ns = c.get('Namespace', nome);
+    if (ns) ns.metadata.labels = { ...labels, ...ns.metadata.labels };
+  }
+  for (const o of objetosBase()) {
+    if (!c.get(o.kind, o.metadata.name, o.metadata.namespace)) c.create(o);
+  }
+  c.tick(60);
+}
+
+function seedResto(c, agora) {
 
   c.create({
     kind: 'Node',

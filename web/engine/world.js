@@ -1,15 +1,18 @@
 // Um "mundo" é o conjunto cluster + arquivos + shell de uma sessão de jogo.
 import { Cluster } from '../sim/cluster.js';
+import { migra } from '../sim/seed.js';
 import { FS, HOME } from '../sim/fs.js';
 import { Shell } from '../sim/shell.js';
 import { podPronto } from '../sim/controllers.js';
 import { REGISTRY } from '../sim/images.js';
 import { requisicao } from '../sim/net.js';
+import { credencialValida, pode } from '../sim/rbac.js';
 
 export { REGISTRY, HOME };
 
 export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, salvo } = {}) {
   const cluster = salvo ? Cluster.restore(salvo.cluster) : new Cluster();
+  if (salvo) migra(cluster);
   const fs = salvo ? FS.restore(salvo.fs) : new FS();
   const env = {
     cluster,
@@ -48,6 +51,9 @@ export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, sal
     },
     pods: (ns, rotulos = {}) => cluster.list('Pod', ns).filter((p) => Object.entries(rotulos).every(([k, v]) => p.metadata.labels?.[k] === v)),
     podPronto,
+    // O usuário consegue logar com essa senha na configuração em vigor?
+    credencial: (u, p) => Boolean(credencialValida(cluster, u, p)),
+    pode: (u, verbo, recurso, grupo = '', ns = null, nome) => pode(cluster, u, verbo, recurso, grupo, ns, nome),
     // Requisição HTTP feita da estação de trabalho (devolve { status, corpo } ou { erro }).
     http: (url) => {
       const m = url.match(/^(https?):\/\/([^/:]+)(?::(\d+))?(\/.*)?$/);

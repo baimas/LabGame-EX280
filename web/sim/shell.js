@@ -6,6 +6,7 @@ import { builtins } from './builtins.js';
 import { oc, skopeo } from './oc/index.js';
 import { curl } from './curl.js';
 import { helm } from './helm.js';
+import { htpasswd } from './rbac.js';
 
 const OPS = ['2>&1', '&&', '||', '>>', '2>', '|', ';', '>', '<'];
 const MARCA = '\u0001';
@@ -55,7 +56,7 @@ export class Shell {
     this.cwd = HOME;
     this.vars = { HOME, USER: 'student', HOSTNAME: 'workstation', '?': '0' };
     this.history = [];
-    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl, helm };
+    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl, helm, htpasswd };
     this.pod = null; // contexto do contêiner quando se está dentro de `oc rsh`
     this.salvo = null;
   }

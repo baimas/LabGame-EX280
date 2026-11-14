@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 3 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Projeto em construção: 4 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -50,7 +50,7 @@ navegador.
 | 0. Primeiro dia | Gerenciar o OpenShift Container Platform | 5 missões |
 | 1. Gestão declarativa | Manifestos, Kustomize, secrets, config maps | 4 missões |
 | 2. Aplicações empacotadas | Templates, Helm, services, labels | 6 missões |
-| 3. Identidade | HTPasswd, usuários, grupos, RBAC | em construção |
+| 3. Identidade | HTPasswd, usuários, grupos, RBAC | 5 missões |
 | 4. Segurança de rede | Routes, TLS, network policies | em construção |
 | 5. Além do HTTP | LoadBalancer, acesso externo | em construção |
 | 6. Autosserviço | Quotas, limit ranges, project template | em construção |
@@ -85,6 +85,20 @@ Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e 
 - **Um template para o time de Catálogo:** publicar um template no projeto e usá-lo com `--param-file`.
 - **Helm: o primeiro chart:** `helm repo add`, `helm show values` e `helm install` com arquivo de valores.
 - **Helm: atualizar, voltar e atualizar de novo:** `helm upgrade`, `helm rollback` e a armadilha do `--reuse-values`.
+
+**Capítulo 3 — Identidade**
+
+- **Crachás para o time novo:** `htpasswd`, secret em `openshift-config` e um segundo provedor HTPasswd no OAuth.
+- **Entra um, sai outro:** trocar senha, remover usuário (com `user` e `identity`) e acrescentar outro.
+- **Cada time no seu quadrado:** grupos e os papéis `admin`, `edit` e `view` por projeto.
+- **Um papel sob medida:** `role`, `rolebinding`, `clusterrole` e `clusterrolebinding` próprios.
+- **Fechando a porta dos fundos:** `cluster-admin` para um grupo e remoção do `kubeadmin`.
+
+## Usuários do laboratório
+
+O jogo começa logado como `admin` (senha `redhatocp`), que é administrador do cluster.
+Também existe o usuário comum `developer` (senha `developer`). As permissões valem de
+verdade: um usuário sem papel no projeto recebe `Forbidden`, como no OpenShift.
 
 ## Limites do simulador
 

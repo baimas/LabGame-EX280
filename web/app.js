@@ -74,6 +74,7 @@ function abreEditor(caminho, conteudo) {
       area.removeEventListener('keydown', tecla);
       $('editor-salvar').onclick = null;
       $('editor-cancelar').onclick = null;
+      document.activeElement?.blur();
       term.focus();
       resolve(valor);
     };

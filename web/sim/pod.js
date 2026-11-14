@@ -138,7 +138,8 @@ async function shellAninhado({ args, sh }) {
 
 // Monta o contexto de execução dentro do contêiner `ct` do pod.
 export function contextoPod(env, pod, ct, shell = 'sh') {
-  const c = env.cluster;
+  // A rede e os arquivos do contêiner não dependem de quem está logado.
+  const c = env.clusterReal || env.cluster;
   const fs = montaFs(c, pod, ct);
   const contexto = {
     nome: pod.metadata.name,
@@ -147,7 +148,7 @@ export function contextoPod(env, pod, ct, shell = 'sh') {
     pod,
     ct,
     shell,
-    env: Object.assign(Object.create(env), { fs }),
+    env: Object.assign(Object.create(env), { fs, cluster: c }),
     vars: {
       PATH: '/opt/app-root/src/bin:/opt/app-root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin',
       HOSTNAME: pod.metadata.name,

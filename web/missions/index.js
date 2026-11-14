@@ -15,12 +15,17 @@ import templates from './c2/templates.js';
 import templateProprio from './c2/template-proprio.js';
 import helmInstall from './c2/helm-install.js';
 import helmUpgrade from './c2/helm-upgrade.js';
+import htpasswdMissao from './c3/htpasswd.js';
+import usuarios from './c3/usuarios.js';
+import gruposMissao from './c3/grupos.js';
+import papelProprio from './c3/papel-proprio.js';
+import kubeadmin from './c3/kubeadmin.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
   { id: 'c1', title: { pt: 'Gestão declarativa', en: 'Declarative management' }, domain: { pt: 'Manifestos, Kustomize, secrets e config maps', en: 'Manifests, Kustomize, secrets, and config maps' }, missions: [manifestos, configuracao, kustomizeBase, overlays] },
   { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [replicasets, servicos, templates, templateProprio, helmInstall, helmUpgrade] },
-  { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [] },
+  { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [htpasswdMissao, usuarios, gruposMissao, papelProprio, kubeadmin] },
   { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [] },
   { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [] },
   { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [] },
@@ -58,5 +63,10 @@ const OBJETIVOS_EN = {
   'Configurar services': 'Configure services',
   'Implantar aplicações a partir de templates': 'Deploy applications from templates',
   'Implantar aplicações a partir de Helm charts': 'Deploy applications from Helm charts',
+  'Configurar o identity provider HTPasswd': 'Configure the HTPasswd identity provider',
+  'Criar e excluir usuários': 'Create and delete users',
+  'Alterar senhas de usuários': 'Change user passwords',
+  'Criar e gerenciar grupos': 'Create and manage groups',
+  'Modificar permissões de usuários e grupos': 'Modify user and group permissions',
 };
 export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);

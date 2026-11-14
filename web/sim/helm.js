@@ -7,6 +7,7 @@ import { clone, b64, deepEqual } from './util.js';
 import { render, definicoes, TemplateError } from './gotemplate.js';
 import { CHARTS, REPO_URL } from './charts.js';
 import { KUBE } from './seed.js';
+import { comUsuario } from './autoriza.js';
 
 const REPOS = '/home/student/.config/helm/repositories.yaml';
 const VERSAO_HELM = 'v3.15.4';
@@ -470,6 +471,9 @@ const AJUDAS = {
 
 export async function helm(ctx) {
   const [cmd, ...resto] = ctx.args;
+  // O Helm usa as credenciais da sessão do oc.
+  if (ctx.env.session.user) ctx = comUsuario(ctx, ctx.env.session.user);
+  else if (!['repo', 'search', 'show', 'pull', 'template', 'lint', 'version', 'help', undefined].includes(cmd)) return { err: 'Error: Kubernetes cluster unreachable: Unauthorized\n', code: 1 };
   const a = args(resto);
   const c = ctx.env.cluster;
   const fs = ctx.env.fs;
