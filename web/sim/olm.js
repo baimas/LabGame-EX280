@@ -97,7 +97,9 @@ function assinaturas(c) {
     } else {
       // Atualiza de uma versão para a seguinte, como o grafo `replaces`.
       const i = versoes.indexOf(instalada);
-      alvo = i >= 0 && i < versoes.length - 1 ? versoes[i + 1] : null;
+      if (i >= 0) alvo = i < versoes.length - 1 ? versoes[i + 1] : null;
+      // Canal novo, sem a versão instalada: vai para a cabeça do canal, se for mais nova.
+      else alvo = versoes.at(-1).localeCompare(instalada, undefined, { numeric: true }) > 0 ? versoes.at(-1) : null;
     }
     if (!alvo) {
       st.state = 'AtLatestKnown';

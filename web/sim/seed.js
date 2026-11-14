@@ -4,6 +4,7 @@ import { objetosIniciais, hashSenha } from './rbac.js';
 import { kindDoObjeto } from './resources.js';
 import { objetosCatalogo } from './olm.js';
 import { objetosScc } from './scc.js';
+import { objetosUpdates } from './updates.js';
 
 export const VERSAO = '4.18.6';
 export const KUBE = 'v1.31.6';
@@ -64,6 +65,7 @@ function objetosBase() {
     // Catálogo de operators e o operator group global de openshift-operators.
     ...objetosCatalogo(),
     ...objetosScc(),
+    ...objetosUpdates(),
     { kind: 'OperatorGroup', metadata: { name: 'global-operators', namespace: 'openshift-operators' }, spec: {} },
   ];
 }

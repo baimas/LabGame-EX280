@@ -60,6 +60,7 @@ export const KINDS = [
   def('InstallPlan', 'installplans', ['ip'], true, 'operators.coreos.com/v1alpha1'),
   def('ClusterServiceVersion', 'clusterserviceversions', ['csv', 'csvs'], true, 'operators.coreos.com/v1alpha1'),
   def('FileIntegrity', 'fileintegrities', [], true, 'fileintegrity.openshift.io/v1alpha1'),
+  def('APIRequestCount', 'apirequestcounts', [], false, 'apiserver.openshift.io/v1'),
   def('ClusterResourceQuota', 'clusterresourcequotas', ['clusterquota'], false, 'quota.openshift.io/v1'),
 ];
 

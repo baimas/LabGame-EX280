@@ -20,6 +20,7 @@ import { comUsuario, exige } from '../autoriza.js';
 import { GERADORES_RBAC, authCmd, admIdentidade } from './identidade.js';
 import { criaProjeto, configProjetos, templateInicial } from '../projetos.js';
 import { jobDoCron } from '../jobs.js';
+import { resumoUpgrade, recomendadas, versaoAtual, kubeDa, imagemDa, CANAIS_DISPONIVEIS } from '../updates.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
 
@@ -1429,7 +1430,8 @@ function status(ctx) {
 function version(ctx) {
   const { f } = parseArgs(ctx.args);
   const cliente = `Client Version: ${VERSAO}\nKustomize Version: v5.4.2\n`;
-  return ok(f.has('client') ? cliente : cliente + `Server Version: ${VERSAO}\nKubernetes Version: ${KUBE}\n`);
+  const v = versaoAtual(ctx.env.clusterReal || ctx.env.cluster);
+  return ok(f.has('client') ? cliente : cliente + `Server Version: ${v}\nKubernetes Version: ${kubeDa(v)}\n`);
 }
 
 function apiResources() {
@@ -1438,11 +1440,50 @@ function apiResources() {
   return ok(table(linhas));
 }
 
+function upgrade(ctx, args) {
+  const c = ctx.env.cluster;
+  if (args[0] === 'channel') {
+    const canal = args[1];
+    const cv = clone(c.must('ClusterVersion', 'version'));
+    if (canal === undefined) throw erro('error: channel argument is required');
+    let aviso = '';
+    if (canal && !CANAIS_DISPONIVEIS.includes(canal)) aviso = `warning: No updates in channel "${canal}"\n`;
+    if (canal === '') delete cv.spec.channel;
+    else cv.spec.channel = canal;
+    c.update(cv);
+    return { out: '', err: aviso, code: 0 };
+  }
+  const { f } = parseArgs(args, ['to-latest', 'allow-explicit-upgrade', 'allow-upgrade-with-warnings', 'clear']);
+  if (f.has('to-image')) throw naoSimulado(ctx, 'oc adm upgrade --to-image');
+  const cv = clone(c.must('ClusterVersion', 'version'));
+  const emAndamento = (cv.status.conditions || []).some((x) => x.type === 'Progressing' && x.status === 'True');
+  if (f.has('clear')) {
+    if (!cv.spec.desiredUpdate) return ok('info: No update in progress\n');
+    delete cv.spec.desiredUpdate;
+    c.update(cv);
+    return ok('Cleared the update field, still at ' + versaoAtual(c) + '\n');
+  }
+  if (!f.has('to') && !f.has('to-latest')) return ok(resumoUpgrade(c));
+  if (emAndamento) throw erro(`error: already upgrading.\n\n  Reason: \n  Message: ${(cv.status.conditions.find((x) => x.type === 'Progressing') || {}).message}\n\nIf you want to upgrade anyway, use --allow-upgrade-with-warnings.`);
+  const recs = recomendadas(c);
+  let alvo = f.one('to');
+  if (f.has('to-latest')) {
+    if (!recs.length) return ok('info: Cluster is already at the latest available version ' + versaoAtual(c) + '\n');
+    alvo = recs[0];
+  }
+  if (alvo === versaoAtual(c)) return ok(`info: Cluster is already at version ${alvo}\n`);
+  if (!recs.includes(alvo)) throw erro(`error: The update ${alvo} is not one of the available updates: ${recs.join(', ') || '<none>'}`);
+  cv.spec.desiredUpdate = { version: alvo, image: imagemDa(alvo), force: false };
+  c.update(cv);
+  return ok(`Requested update to ${alvo}\n`);
+}
+
 function adm(ctx) {
   const [sub, oque, ...resto] = ctx.args;
   const c = ctx.env.cluster;
   const id = admIdentidade(ctx, sub, [oque, ...resto].filter((x) => x !== undefined));
   if (id) return id;
+  if (sub === 'upgrade') return upgrade(ctx, [oque, ...resto].filter((x) => x !== undefined));
   if (sub === 'create-bootstrap-project-template') {
     const { f } = parseArgs([oque, ...resto].filter((x) => x !== undefined));
     const tpl = templateInicial(f.one('name') || 'project-request');
@@ -1561,6 +1602,20 @@ const SUBS = {
 };
 
 export async function oc(ctx) {
+  // Opções globais antes do subcomando (`oc -n NS get pods`) vão para depois dele.
+  const globais = [];
+  let ini = 0;
+  while (ini < ctx.args.length) {
+    const a = ctx.args[ini];
+    if (/^(-n|--namespace|--as|--as-group)$/.test(a) && ini + 1 < ctx.args.length) {
+      globais.push(a, ctx.args[ini + 1]);
+      ini += 2;
+    } else if (/^(--namespace|--as|--as-group)=|^-n./.test(a)) {
+      globais.push(a);
+      ini += 1;
+    } else break;
+  }
+  if (globais.length) ctx = { ...ctx, args: [ctx.args[ini], ...globais, ...ctx.args.slice(ini + 1)].filter((x) => x !== undefined) };
   const [sub, ...resto] = ctx.args;
   if (!sub || sub === '--help' || sub === '-h') return ok(ajuda([]));
   if (sub === 'help') return ok(ajuda(resto) || ajuda([]));

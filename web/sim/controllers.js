@@ -8,6 +8,7 @@ import { quotaCtl } from './quota.js';
 import { projetoCtl } from './projetos.js';
 import { olmCtl } from './olm.js';
 import { jobsCtl, cronCtl } from './jobs.js';
+import { updatesCtl } from './updates.js';
 import { uidEfetivo } from './scc.js';
 import { pode } from './rbac.js';
 
@@ -27,6 +28,7 @@ export function reconcile(c) {
   metallbCtl(c);
   quotaCtl(c);
   projetoCtl(c);
+  updatesCtl(c);
 }
 
 // Endereços de um pool: faixas `a.b.c.d-a.b.c.e` ou CIDR.

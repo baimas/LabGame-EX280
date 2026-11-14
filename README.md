@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 9 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Os 10 capítulos estão jogáveis; falta o modo prova. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -56,7 +56,7 @@ navegador.
 | 6. Autosserviço | Quotas, limit ranges, project template | 5 missões |
 | 7. Operators | Instalar e remover operators | 4 missões |
 | 8. Segurança de aplicações | Service accounts, SCC, jobs, cron jobs | 4 missões |
-| 9. Updates | Atualização do cluster e de operators | em construção |
+| 9. Updates | Atualização do cluster e de operators | 4 missões |
 
 Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e sem dicas.
 
@@ -132,6 +132,13 @@ A instalação de operators pelo console web não é simulada; o jogo cobre o ca
 - **Ninguém aqui precisa de root:** pod recusado por todas as SCCs e `oc adm policy scc-subject-review`.
 - **Quem vigia os pods:** aplicação que lê a API do cluster com uma service account e o papel `view` em dois projetos.
 - **A conciliação da madrugada:** cron job com agenda, histórico e concorrência, e um job disparado a partir dele.
+
+**Capítulo 9 — Updates**
+
+- **Patch de segurança:** `oc adm upgrade` dentro da mesma minor, acompanhando a ClusterVersion e os cluster operators.
+- **Rumo à 4.19:** `apirequestcounts`, admin-ack para APIs removidas, troca de canal e atualização de minor.
+- **Um canal à frente:** troca de canal de um operator com aprovação manual.
+- **Prova oral da Plataforma:** cinco perguntas sobre canais, rollback, EUS e atualização de operators.
 
 ## Usuários do laboratório
 

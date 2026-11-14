@@ -141,6 +141,10 @@ const COLUNAS = {
     head: ['NAME', 'CATALOG', 'AGE'],
     row: (o, c) => [o.status?.catalogSourceDisplayName || '', idade(o, c)],
   },
+  APIRequestCount: {
+    head: ['NAME', 'REMOVEDINRELEASE', 'REQUESTSINCURRENTHOUR', 'REQUESTSINLAST24H'],
+    row: (o) => [o.status?.removedInRelease || '', o.status?.currentHour?.requestCount ?? 0, o.status?.requestCount ?? 0],
+  },
   Job: {
     head: ['NAME', 'STATUS', 'COMPLETIONS', 'DURATION', 'AGE'],
     row: (o, c) => {

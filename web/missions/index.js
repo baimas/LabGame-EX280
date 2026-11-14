@@ -42,6 +42,10 @@ import anyuid from './c8/anyuid.js';
 import sccDiagnostico from './c8/scc-diagnostico.js';
 import apiAcesso from './c8/api.js';
 import cronjobMissao from './c8/cronjob.js';
+import zstream from './c9/zstream.js';
+import minorUp from './c9/minor.js';
+import operadorUp from './c9/operador.js';
+import quizUp from './c9/quiz.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
@@ -53,7 +57,7 @@ export const CHAPTERS = [
   { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [quotaMissao, limitrange, clusterquota, templateProjeto, selfProvisioner] },
   { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [instalarOp, manualOp, travadoOp, removerOp] },
   { id: 'c8', title: { pt: 'Segurança de aplicações', en: 'Application security' }, domain: { pt: 'Service accounts, SCC, jobs e cron jobs', en: 'Service accounts, SCCs, jobs, and cron jobs' }, missions: [anyuid, sccDiagnostico, apiAcesso, cronjobMissao] },
-  { id: 'c9', title: { pt: 'Updates', en: 'Updates' }, domain: { pt: 'Atualização do cluster e de operators', en: 'Cluster and operator updates' }, missions: [] },
+  { id: 'c9', title: { pt: 'Updates', en: 'Updates' }, domain: { pt: 'Atualização do cluster e de operators', en: 'Cluster and operator updates' }, missions: [zstream, minorUp, operadorUp, quizUp] },
 ];
 
 export const MISSIONS = CHAPTERS.flatMap((c) => c.missions.map((m) => ({ ...m, chapter: c.id })));
@@ -113,5 +117,7 @@ const OBJETIVOS_EN = {
   'Gerenciar e aplicar permissões com security context constraints': 'Manage and apply permissions using security context constraints',
   'Permitir que aplicações acessem a API do Kubernetes': 'Provide applications with access to the Kubernetes API',
   'Agendar tarefas com jobs e cron jobs': 'Run and schedule tasks with jobs and cron jobs',
+  'Atualizar o cluster OpenShift': 'Update an OpenShift cluster',
+  'Identificar APIs depreciadas antes de atualizar': 'Identify deprecated Kubernetes API usage',
 };
 export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);
