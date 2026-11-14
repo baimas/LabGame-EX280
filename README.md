@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 2 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Projeto em construção: 3 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -49,7 +49,7 @@ navegador.
 |---|---|---|
 | 0. Primeiro dia | Gerenciar o OpenShift Container Platform | 5 missões |
 | 1. Gestão declarativa | Manifestos, Kustomize, secrets, config maps | 4 missões |
-| 2. Aplicações empacotadas | Templates, Helm, services, labels | em construção |
+| 2. Aplicações empacotadas | Templates, Helm, services, labels | 6 missões |
 | 3. Identidade | HTPasswd, usuários, grupos, RBAC | em construção |
 | 4. Segurança de rede | Routes, TLS, network policies | em construção |
 | 5. Além do HTTP | LoadBalancer, acesso externo | em construção |
@@ -76,6 +76,15 @@ Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e 
 - **Configuração fora da imagem:** config maps e secrets como variáveis e como arquivos.
 - **Kustomize: a base:** escrever uma `kustomization.yaml` com geradores e labels.
 - **Kustomize: uma base, dois ambientes:** overlays com `namespace`, `replicas`, `images` e `patches`.
+
+**Capítulo 2 — Aplicações empacotadas**
+
+- **Um pod em quarentena:** replica set, seletor e labels, e um service que ignora o pod isolado.
+- **Loja fora do ar:** troubleshooting de route, service, seletor e `targetPort`.
+- **Banco de dados pelo catálogo:** `oc process --parameters` e `oc new-app --template` com parâmetros gerados.
+- **Um template para o time de Catálogo:** publicar um template no projeto e usá-lo com `--param-file`.
+- **Helm: o primeiro chart:** `helm repo add`, `helm show values` e `helm install` com arquivo de valores.
+- **Helm: atualizar, voltar e atualizar de novo:** `helm upgrade`, `helm rollback` e a armadilha do `--reuse-values`.
 
 ## Limites do simulador
 

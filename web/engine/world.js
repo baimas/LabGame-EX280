@@ -4,6 +4,7 @@ import { FS, HOME } from '../sim/fs.js';
 import { Shell } from '../sim/shell.js';
 import { podPronto } from '../sim/controllers.js';
 import { REGISTRY } from '../sim/images.js';
+import { requisicao } from '../sim/net.js';
 
 export { REGISTRY, HOME };
 
@@ -39,13 +40,19 @@ export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, sal
       return fs.isFile(p) ? fs.read(p).trim() : null;
     },
     lines: (caminho) => (w.file(caminho) ?? '').split('\n').map((l) => l.trim()).filter(Boolean).sort(),
-    // Deployment com todas as réplicas prontas e atualizadas.
+    // Deployment com todas as réplicas prontas e atualizadas, sem pods antigos sobrando.
     ready: (nome, ns) => {
       const d = cluster.get('Deployment', nome, ns);
-      return Boolean(d) && d.spec.replicas > 0 && (d.status?.readyReplicas || 0) === d.spec.replicas && (d.status?.updatedReplicas || 0) === d.spec.replicas;
+      const st = d?.status || {};
+      return Boolean(d) && d.spec.replicas > 0 && st.replicas === d.spec.replicas && st.readyReplicas === d.spec.replicas && st.updatedReplicas === d.spec.replicas;
     },
     pods: (ns, rotulos = {}) => cluster.list('Pod', ns).filter((p) => Object.entries(rotulos).every(([k, v]) => p.metadata.labels?.[k] === v)),
     podPronto,
+    // Requisição HTTP feita da estação de trabalho (devolve { status, corpo } ou { erro }).
+    http: (url) => {
+      const m = url.match(/^(https?):\/\/([^/:]+)(?::(\d+))?(\/.*)?$/);
+      return requisicao(cluster, null, { https: m[1] === 'https', host: m[2], porta: m[3] ? Number(m[3]) : null, caminho: m[4] || '/' });
+    },
     serialize: () => ({ cluster: cluster.serialize(), fs: fs.serialize(), session: env.session, cwd: shell.cwdEstacao() }),
   };
   return w;

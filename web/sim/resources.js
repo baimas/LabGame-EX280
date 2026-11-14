@@ -22,6 +22,7 @@ export const KINDS = [
   def('Node', 'nodes', ['no'], false, 'v1'),
   def('Pod', 'pods', ['po'], true, 'v1'),
   def('Service', 'services', ['svc'], true, 'v1'),
+  def('Endpoints', 'endpoints', ['ep'], true, 'v1'),
   def('ConfigMap', 'configmaps', ['cm'], true, 'v1'),
   def('Secret', 'secrets', [], true, 'v1'),
   def('ServiceAccount', 'serviceaccounts', ['sa'], true, 'v1'),

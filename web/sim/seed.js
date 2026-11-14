@@ -1,4 +1,6 @@
 // Estado inicial do cluster: um OpenShift de nó único, como nos laboratórios.
+import { TEMPLATES } from './catalogo.js';
+
 export const VERSAO = '4.18.6';
 export const KUBE = 'v1.31.6';
 
@@ -35,6 +37,7 @@ export function seed(c) {
     'openshift-monitoring': { 'network.openshift.io/policy-group': 'monitoring', 'policy-group.network.openshift.io/monitoring': '' },
   };
   for (const nome of NAMESPACES) c.create({ kind: 'Namespace', metadata: { name: nome, labels: ROTULOS[nome] } });
+  for (const t of TEMPLATES) c.create(JSON.parse(JSON.stringify(t)));
 
   c.create({
     kind: 'Node',

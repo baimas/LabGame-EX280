@@ -231,7 +231,7 @@ export class Cluster {
       }
     }
     if (o.kind === 'Route') {
-      o.spec.host ??= `${o.metadata.name}-${o.metadata.namespace}.${APPS_DOMAIN}`;
+      if (!o.spec.host) o.spec.host = `${o.metadata.name}-${o.metadata.namespace}.${APPS_DOMAIN}`;
       o.spec.to.kind ??= 'Service';
       o.spec.to.weight ??= 100;
       o.spec.wildcardPolicy ??= 'None';

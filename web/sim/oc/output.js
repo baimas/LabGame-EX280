@@ -57,6 +57,22 @@ const COLUNAS = {
     head: ['NAME', 'HOST/PORT', 'PATH', 'SERVICES', 'PORT', 'TERMINATION', 'WILDCARD'],
     row: (o) => [o.spec.host, o.spec.path || '', o.spec.to.name, o.spec.port?.targetPort ?? '<all>', o.spec.tls ? o.spec.tls.termination + (o.spec.tls.insecureEdgeTerminationPolicy ? '/' + o.spec.tls.insecureEdgeTerminationPolicy : '') : '', o.spec.wildcardPolicy],
   },
+  Template: {
+    head: ['NAME', 'DESCRIPTION', 'PARAMETERS', 'OBJECTS'],
+    row: (o) => {
+      const d = (o.metadata.annotations?.description || '').replace(/\s+/g, ' ');
+      const gerados = (o.parameters || []).filter((p) => p.generate).length;
+      return [d.length > 60 ? d.slice(0, 57) + '...' : d, `${(o.parameters || []).length} (${gerados ? `${gerados} generated` : 'all set'})`, (o.objects || []).length];
+    },
+  },
+  Endpoints: {
+    head: ['NAME', 'ENDPOINTS', 'AGE'],
+    row: (o, c) => {
+      const lista = (o.subsets || []).flatMap((s) => (s.addresses || []).flatMap((a) => s.ports.map((p) => `${a.ip}:${p.port}`)));
+      const texto = lista.length > 3 ? `${lista.slice(0, 3).join(',')} + ${lista.length - 3} more...` : lista.join(',') || '<none>';
+      return [texto, idade(o, c)];
+    },
+  },
   ConfigMap: { head: ['NAME', 'DATA', 'AGE'], row: (o, c) => [Object.keys(o.data || {}).length, idade(o, c)] },
   Secret: { head: ['NAME', 'TYPE', 'DATA', 'AGE'], row: (o, c) => [o.type, Object.keys(o.data || {}).length, idade(o, c)] },
   ServiceAccount: { head: ['NAME', 'SECRETS', 'AGE'], row: (o, c) => [1, idade(o, c)] },
@@ -198,6 +214,24 @@ function volumes(lista) {
 }
 
 const DESCRICOES = {
+  Template(o) {
+    const c2 = (r, v) => `${(r + ':').padEnd(16)}${v}\n`;
+    let s = c2('Name', o.metadata.name) + c2('Namespace', o.metadata.namespace) + c2('Created', o.metadata.creationTimestamp);
+    s += c2('Labels', labelsText(o.metadata.labels)) + c2('Description', o.metadata.annotations?.description || '<none>');
+    s += '\nParameters:\n';
+    for (const p of o.parameters || []) {
+      s += `    ${'Name:'.padEnd(16)}${p.name}\n`;
+      if (p.displayName) s += `    ${'Display Name:'.padEnd(16)}${p.displayName}\n`;
+      if (p.description) s += `    ${'Description:'.padEnd(16)}${p.description}\n`;
+      s += `    ${'Required:'.padEnd(16)}${Boolean(p.required)}\n`;
+      if (p.generate) s += `    ${'Generated:'.padEnd(16)}${p.generate}\n    ${'From:'.padEnd(16)}${p.from}\n`;
+      else s += `    ${'Value:'.padEnd(16)}${p.value ?? '<none>'}\n`;
+      s += '\n';
+    }
+    s += c2('Object Labels', labelsText(o.labels)) + '\n' + c2('Message', o.message || '<none>') + '\nObjects:\n';
+    s += (o.objects || []).map((x) => `    ${x.kind.padEnd(16)}${x.metadata?.name}\n`).join('');
+    return s;
+  },
   Pod(o, c) {
     const dono = o.metadata.ownerReferences?.[0];
     let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + campo('Priority', 0);

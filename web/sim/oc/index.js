@@ -14,6 +14,7 @@ import { tabela, ordena, paraYaml, paraJson, descreve, podResumo } from './outpu
 import { ajuda } from './help.js';
 import { explain as explica } from './explain.js';
 import { contextoPod } from '../pod.js';
+import { processa, parametros } from '../template.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
 
@@ -596,11 +597,94 @@ function whoami(ctx) {
 
 // ------------------------------------------------------- new-app / expose
 
+// Template indicado por --template, -f ou pelo nome (projeto atual ou `openshift`).
+function acharTemplate(ctx, f, pos, ns) {
+  const c = ctx.env.cluster;
+  if (f.has('file') || f.has('filename')) {
+    const ff = { all: (k) => (k === 'filename' ? [...f.all('file'), ...f.all('filename')] : []) };
+    const t = lerManifestos(ctx, ff).find((o) => o.kind === 'Template');
+    if (!t) throw erro('error: no template found in the file');
+    return t;
+  }
+  const nome = f.one('template') || (pos[0] && !pos[0].includes('=') && !pos[0].includes('/') ? pos[0] : null);
+  if (!nome) return null;
+  const [nsT, n] = String(nome).includes('/') ? String(nome).split('/').filter(Boolean) : [null, nome];
+  const t = nsT ? c.get('Template', n, nsT) : c.get('Template', n, ns) || c.get('Template', n, 'openshift');
+  if (!t && f.has('template')) throw erro(`error: unable to locate any templates loaded in accessible projects with name "${nome}"`);
+  return t || null;
+}
+
+function novoAppTemplate(ctx, f, tpl, ns) {
+  const c = ctx.env.cluster;
+  const informados = parametros(ctx.env.fs, ctx.sh.cwd, [...f.all('param'), ...f.all('p'), ...f.all('patch')], f.all('param-file'));
+  const rotulos = Object.fromEntries(f.all('labels').concat(f.all('selector')).flatMap((l) => String(l).split(',')).map((x) => x.split('=')));
+  const r = processa(tpl, informados, rotulos);
+  const titulo = tpl.metadata.annotations?.['openshift.io/display-name'] || tpl.metadata.name;
+  let out = `--> Deploying template "${tpl.metadata.namespace ? tpl.metadata.namespace + '/' : ''}${tpl.metadata.name}" ${tpl.metadata.namespace ? '' : 'for "' + (f.one('file') || f.one('filename')) + '" '}to project ${ns}\n\n`;
+  out += `     ${titulo}\n     ${'-'.repeat(Math.min(titulo.length, 60))}\n     ${tpl.metadata.annotations?.description || ''}\n\n`;
+  if (r.mensagem) out += r.mensagem.split('\n').map((l) => `     ${l}`).join('\n') + '\n\n';
+  out += '     * With parameters:\n';
+  for (const p of tpl.parameters || []) out += `        * ${p.displayName || p.name}=${r.valores[p.name]}${r.gerados.has(p.name) ? ' # generated' : ''}\n`;
+  out += '\n--> Creating resources ...\n';
+  let err = '';
+  for (const o of r.objetos) {
+    const k = tipoOuErro(o.kind);
+    try {
+      const x = clone(normaliza(o));
+      if (c.tipo(x.kind).namespaced) x.metadata.namespace = ns;
+      c.create(x);
+      out += `    ${k.out === k.singular ? k.singular : k.out} "${o.metadata.name}" created\n`;
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      err += `    error: ${e.message.replace(/^Error from server \(\w+\): /, '')}\n`;
+    }
+  }
+  if (err) return { out: out + err + '--> Failed\n', code: 1 };
+  out += '--> Success\n';
+  const svc = r.objetos.find((o) => o.kind === 'Service');
+  if (svc && !r.objetos.some((o) => o.kind === 'Route')) out += `    Application is not exposed. You can expose services to the outside world by executing one or more of the commands below:\n     'oc expose service/${svc.metadata.name}'\n`;
+  else if (r.objetos.some((o) => o.kind === 'Route')) out += '    Access your application via route \'' + (c.get('Route', r.objetos.find((o) => o.kind === 'Route').metadata.name, ns)?.spec.host || '') + '\' \n';
+  return ok(out + "    Run 'oc status' to view your app.\n");
+}
+
+function process(ctx) {
+  const { pos, f } = parseArgs(ctx.args, ['parameters', 'local', 'ignore-unknown-parameters']);
+  const c = ctx.env.cluster;
+  const ns = nsDe(ctx, f);
+  let tpl;
+  const posicionais = pos.filter((p) => p.includes('=') && !p.includes('/'));
+  const nomes = pos.filter((p) => !posicionais.includes(p));
+  if (f.has('filename')) {
+    tpl = lerManifestos(ctx, f).find((o) => o.kind === 'Template');
+    if (!tpl) throw erro('error: unable to process template: no template found');
+  } else {
+    if (!nomes[0]) throw erro("error: must pass a template name or -f\nSee 'oc process -h' for help and examples");
+    const [nsT, n] = nomes[0].includes('//') ? nomes[0].split('//') : [ns, nomes[0].replace(/^templates?(\.template\.openshift\.io)?\//, '')];
+    tpl = c.get('Template', n, nsT);
+    if (!tpl) throw erro(`Error from server (NotFound): templates.template.openshift.io "${n}" not found`);
+  }
+  if (f.has('parameters')) {
+    const linhas = [['NAME', 'DESCRIPTION', 'GENERATOR', 'VALUE'], ...(tpl.parameters || []).map((p) => [p.name, (p.description || '').slice(0, 70), p.generate || '', p.generate ? p.from : p.value ?? ''])];
+    return ok(table(linhas));
+  }
+  const informados = parametros(ctx.env.fs, ctx.sh.cwd, [...f.all('param'), ...f.all('p'), ...f.all('patch'), ...posicionais], f.all('param-file'));
+  if (f.has('ignore-unknown-parameters')) for (const k of Object.keys(informados)) if (!(tpl.parameters || []).some((p) => p.name === k)) delete informados[k];
+  const rotulos = Object.fromEntries(f.all('labels').concat(f.all('selector')).flatMap((l) => String(l).split(',')).map((x) => x.split('=')));
+  const r = processa(tpl, informados, rotulos);
+  const lista = { kind: 'List', apiVersion: 'v1', metadata: {}, items: r.objetos };
+  const saida = String(f.one('output') || 'json');
+  if (saida === 'yaml') return ok(paraYaml(lista));
+  if (saida === 'name') return ok(r.objetos.map((o) => `${tipoOuErro(o.kind).out}/${o.metadata.name}\n`).join(''));
+  if (saida === 'json') return ok(paraJson(lista));
+  throw erro(`error: output format "${saida}" not recognized`);
+}
+
 function newApp(ctx) {
   const { pos, f } = parseArgs(ctx.args);
   const c = ctx.env.cluster;
   const ns = nsDe(ctx, f);
-  if (f.has('template') || f.has('file') || f.has('filename')) throw naoSimulado(ctx, 'oc new-app --template/--file');
+  const tpl = acharTemplate(ctx, f, pos, ns);
+  if (tpl) return novoAppTemplate(ctx, f, tpl, ns);
   const imagem = f.one('image') || f.one('docker-image') || pos[0];
   if (!imagem) throw erro('error: You must specify one or more images, image streams, templates, or source code locations to create an application.');
   if (/^https?:|\.git$|~/.test(imagem)) throw naoSimulado(ctx, ctx.env.t('oc new-app a partir de código-fonte', 'oc new-app from source code'));
@@ -1069,8 +1153,34 @@ async function logs(ctx) {
 const SHELLS = ['sh', 'bash', '/bin/sh', '/bin/bash', '/usr/bin/sh', '/usr/bin/bash'];
 
 // `oc exec` e `oc rsh`: executa um comando no contêiner ou abre um shell nele.
+// Como no oc real, as opções do oc terminam no nome do pod: o que vem
+// depois pertence ao comando executado no contêiner.
+function separaComando(args) {
+  const comValor = new Set(['-c', '--container', '-n', '--namespace', '--shell', '--timeout', '--pod-running-timeout']);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') return { opcoes: args.slice(0, i), comando: args.slice(i + 1), traco: true };
+    if (comValor.has(a)) i++;
+    else if (!a.startsWith('-')) {
+      // Opções do oc ainda podem vir entre o pod e o `--` (ex.: `oc exec pod -c app -- ls`).
+      let j = i + 1;
+      const extras = [];
+      while (j < args.length && args[j] !== '--' && args[j].startsWith('-') && args.includes('--', j)) {
+        extras.push(args[j]);
+        if (comValor.has(args[j])) extras.push(args[++j]);
+        j++;
+      }
+      if (args[j] === '--') return { opcoes: [...args.slice(0, i + 1), ...extras], comando: args.slice(j + 1), traco: true };
+      return { opcoes: args.slice(0, i + 1), comando: args.slice(i + 1), traco: false };
+    }
+  }
+  return { opcoes: args, comando: [], traco: false };
+}
+
 async function exec(ctx, rsh = false) {
-  const { pos, f, resto } = parseArgs(ctx.args, ['T', 'quiet', 'q']);
+  const partes = separaComando(ctx.args);
+  const { pos, f } = parseArgs(partes.opcoes, ['T', 'quiet', 'q']);
+  const resto = partes.traco || partes.comando.length ? partes.comando : null;
   const c = ctx.env.cluster;
   const { pod } = achaPod(ctx, pos[0], nsDe(ctx, f), rsh ? 'rsh' : 'exec');
   const nomeCt = f.one('container') || pod.spec.containers[0].name;
@@ -1291,7 +1401,7 @@ const OC_REAIS = ['adm', 'annotate', 'api-resources', 'api-versions', 'apply', '
 const SUBS = {
   get, describe, apply, create, delete: del, 'new-project': newProject, project, projects, login, whoami,
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
-  patch, edit, rollout, logs, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
+  patch, edit, rollout, logs, process, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
   'cluster-info': () => ok(`Kubernetes control plane is running at ${SERVER}\n\nTo further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.\n`),
   events: (ctx) => get({ ...ctx, args: ['events', ...ctx.args] }),
   logout: (ctx) => ok(`Logged "${ctx.env.session.user}" out on "${SERVER}"\n`),

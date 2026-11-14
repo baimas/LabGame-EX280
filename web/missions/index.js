@@ -9,11 +9,17 @@ import manifestos from './c1/manifestos.js';
 import configuracao from './c1/configuracao.js';
 import kustomizeBase from './c1/kustomize-base.js';
 import overlays from './c1/overlays.js';
+import replicasets from './c2/replicasets.js';
+import servicos from './c2/services.js';
+import templates from './c2/templates.js';
+import templateProprio from './c2/template-proprio.js';
+import helmInstall from './c2/helm-install.js';
+import helmUpgrade from './c2/helm-upgrade.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
   { id: 'c1', title: { pt: 'Gestão declarativa', en: 'Declarative management' }, domain: { pt: 'Manifestos, Kustomize, secrets e config maps', en: 'Manifests, Kustomize, secrets, and config maps' }, missions: [manifestos, configuracao, kustomizeBase, overlays] },
-  { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [] },
+  { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [replicasets, servicos, templates, templateProprio, helmInstall, helmUpgrade] },
   { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [] },
   { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [] },
   { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [] },
@@ -48,5 +54,9 @@ const OBJETIVOS_EN = {
   'Criar e usar secrets': 'Create and use secrets',
   'Implantar aplicações com Kustomize': 'Deploy applications with Kustomize',
   'Trabalhar com overlays do Kustomize': 'Work with Kustomize overlays',
+  'Trabalhar com replica sets': 'Work with replica sets',
+  'Configurar services': 'Configure services',
+  'Implantar aplicações a partir de templates': 'Deploy applications from templates',
+  'Implantar aplicações a partir de Helm charts': 'Deploy applications from Helm charts',
 };
 export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);

@@ -10,6 +10,36 @@ export function reconcile(c) {
     pods(c);
   }
   deployments(c);
+  endpointsCtl(c);
+}
+
+// Mantém um objeto Endpoints por service, com os pods prontos e não prontos.
+function endpointsCtl(c) {
+  const servicos = new Set();
+  for (const svc of c.list('Service')) {
+    if (svc.spec.type === 'ExternalName') continue;
+    const ns = svc.metadata.namespace;
+    servicos.add(`${ns}/${svc.metadata.name}`);
+    const selecionados = svc.spec.selector ? c.list('Pod', ns).filter((p) => p.status?.podIP && p.status.phase === 'Running' && matchLabels(p.metadata.labels, svc.spec.selector)) : [];
+    const endereco = (p) => ({ ip: p.status.podIP, nodeName: p.spec.nodeName, targetRef: { kind: 'Pod', name: p.metadata.name, namespace: ns, uid: p.metadata.uid } });
+    const portas = (svc.spec.ports || []).map((sp) => {
+      let porta = sp.targetPort;
+      if (typeof porta === 'string' && !/^\d+$/.test(porta)) porta = selecionados[0]?.spec.containers.flatMap((x) => x.ports || []).find((x) => x.name === porta)?.containerPort;
+      return { ...(sp.name ? { name: sp.name } : {}), port: Number(porta), protocol: sp.protocol || 'TCP' };
+    }).filter((p) => p.port);
+    const prontos = selecionados.filter(podPronto).map(endereco);
+    const naoProntos = selecionados.filter((p) => !podPronto(p)).map(endereco);
+    const subsets = prontos.length || naoProntos.length ? [{ ...(prontos.length ? { addresses: prontos } : {}), ...(naoProntos.length ? { notReadyAddresses: naoProntos } : {}), ports: portas }] : [];
+    const atual = c.get('Endpoints', svc.metadata.name, ns);
+    if (!atual) c.create({ kind: 'Endpoints', metadata: { name: svc.metadata.name, namespace: ns, labels: clone(svc.metadata.labels) }, subsets });
+    else if (JSON.stringify(atual.subsets || []) !== JSON.stringify(subsets)) {
+      atual.subsets = subsets;
+      atual.metadata.resourceVersion = String(1000 + c.seq++);
+    }
+  }
+  for (const ep of c.list('Endpoints')) {
+    if (!servicos.has(`${ep.metadata.namespace}/${ep.metadata.name}`)) c.objs.delete(`Endpoints/${ep.metadata.namespace}/${ep.metadata.name}`);
+  }
 }
 
 const donoDe = (filho, pai) => (filho.metadata.ownerReferences || []).some((r) => r.uid === pai.metadata.uid);
@@ -79,9 +109,23 @@ function deployments(c) {
   }
 }
 
+const temControlador = (p) => (p.metadata.ownerReferences || []).some((r) => r.controller);
+
 function replicasets(c) {
   for (const rs of c.list('ReplicaSet')) {
     const ns = rs.metadata.namespace;
+    const sel = rs.spec.selector;
+    // Como no Kubernetes, o replica set solta os pods que deixaram de casar
+    // com o seletor e adota pods órfãos que passaram a casar.
+    for (const p of c.list('Pod', ns)) {
+      const casa = matchLabels(p.metadata.labels || {}, sel);
+      if (donoDe(p, rs) && !casa) {
+        p.metadata.ownerReferences = p.metadata.ownerReferences.filter((r) => r.uid !== rs.metadata.uid);
+        if (!p.metadata.ownerReferences.length) delete p.metadata.ownerReferences;
+      } else if (!temControlador(p) && casa && !['Succeeded', 'Failed'].includes(p.status?.phase)) {
+        p.metadata.ownerReferences = [...(p.metadata.ownerReferences || []), ref(rs)];
+      }
+    }
     let meus = c.list('Pod', ns).filter((p) => donoDe(p, rs));
     while (meus.length < rs.spec.replicas) {
       const tpl = rs.spec.template;
