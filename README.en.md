@@ -35,8 +35,9 @@ Open http://localhost:8280 in your browser.
 
 1. Pick a mission from the list and click **Start mission**. The environment is prepared as
    with `lab start`, often with something already broken.
-2. Solve it in the terminal with `oc`. The Tab key completes commands, resource types, and
-   names, and `vi file` opens an editor.
+2. Solve it in the terminal with `oc`. The Tab key works as in the real `oc` 4.22 (commands,
+   subcommands, options, values such as `-o json`, resource types and names), and `vi file`
+   opens an editor.
 3. Click **Grade** or run `lab grade` to see what passed and what is missing.
 4. Each hint costs part of the XP. The commented solution becomes available after the first
    grading, and each step can be run straight in the terminal.
@@ -212,6 +213,14 @@ and the Red Hat portal for the version assigned to you.
 
 In the minor update mission (4.21 → 4.22), the deprecated APIs belong to a fictional Nimbus
 operator: what the exam tests is the mechanism (`apirequestcounts` and admin-ack).
+
+### The game `oc` and the real `oc`
+
+Commands, subcommands, aliases, options, autocomplete, and the `--help` text come from the
+official `oc` 4.22.22 client (`scripts/extrai-oc.py`). Compared with the binary in 1,074 Tab
+cases, the game matches 1,071; the differences are corner cases not used in the exam. Unknown
+options give the same errors as the real `oc`. What Tab does not fully reproduce is the list of
+resource types of a real cluster: the game offers the types it simulates.
 
 ## Project layout
 

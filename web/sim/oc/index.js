@@ -21,6 +21,7 @@ import { GERADORES_RBAC, authCmd, admIdentidade } from './identidade.js';
 import { criaProjeto, configProjetos, templateInicial } from '../projetos.js';
 import { jobDoCron } from '../jobs.js';
 import { noHost } from '../no.js';
+import { validaOpcoes, ajudaReal, ajudaOptions, versaoCliente, comandosRaiz } from './completar.js';
 import { resumoUpgrade, recomendadas, versaoAtual, kubeDa, imagemDa, CANAIS_DISPONIVEIS } from '../updates.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
@@ -1452,7 +1453,7 @@ function status(ctx) {
 
 function version(ctx) {
   const { f } = parseArgs(ctx.args);
-  const cliente = `Client Version: ${VERSAO}\nKustomize Version: v5.4.2\n`;
+  const cliente = `${versaoCliente()}\n`;
   const v = versaoAtual(ctx.env.clusterReal || ctx.env.cluster);
   return ok(f.has('client') ? cliente : cliente + `Server Version: ${v}\nKubernetes Version: ${kubeDa(v)}\n`);
 }
@@ -1666,12 +1667,21 @@ export async function oc(ctx) {
   }
   if (globais.length) ctx = { ...ctx, args: [ctx.args[ini], ...globais, ...ctx.args.slice(ini + 1)].filter((x) => x !== undefined) };
   const [sub, ...resto] = ctx.args;
-  if (!sub || sub === '--help' || sub === '-h') return ok(ajuda([]));
-  if (sub === 'help') return ok(ajuda(resto) || ajuda([]));
+  // Ajuda, opções e mensagens de erro iguais às do cliente oficial 4.22.
+  if (!sub) return ok(ajudaReal([]));
+  if (sub === 'help') return ok(ajudaReal(resto) || ajudaReal([]));
+  if (sub === 'options') return { err: ajudaOptions(), code: 0 };
+  const errOpcao = validaOpcoes(ctx.args);
+  if (errOpcao) return { err: errOpcao, code: 1 };
+  if (sub === '--help' || sub === '-h') return ok(ajudaReal([]));
   const fn = SUBS[sub];
   if (!fn) {
-    if (OC_REAIS.includes(sub)) throw naoSimulado(ctx, `oc ${sub}`);
-    throw erro(`error: unknown command "${sub}" for "oc"\nRun 'oc --help' for usage.`);
+    if (comandosRaiz().includes(sub) || OC_REAIS.includes(sub)) {
+      if (ctx.args.includes('--help') || ctx.args.includes('-h')) return ok(ajudaReal(ctx.args));
+      throw naoSimulado(ctx, `oc ${sub}`);
+    }
+    const parecidos = comandosRaiz().filter((n) => !['help', 'completion'].includes(n) && (distancia(sub.toLowerCase(), n) <= 2 || n.startsWith(sub.toLowerCase())));
+    return { err: `error: unknown command "${sub}" for "oc"\n${parecidos.length ? `\nDid you mean this?\n${parecidos.map((p) => `\t${p}`).join('\n')}\n` : ''}`, code: 1 };
   }
   // Ajuda só vale para as opções antes do `--`.
   const antes = resto.includes('--') ? resto.slice(0, resto.indexOf('--')) : resto;
@@ -1687,7 +1697,7 @@ export async function oc(ctx) {
     else args.push(a);
   }
   if (antes.includes('--help') || antes.includes('-h')) {
-    const texto = ajuda([sub, ...antes]);
+    const texto = ajudaReal(ctx.args) || ajuda([sub, ...antes]);
     if (texto) return ok(texto);
     throw naoSimulado(ctx, `oc ${sub} --help`);
   }
@@ -1702,3 +1712,11 @@ export async function oc(ctx) {
 }
 
 export const OC_SUBS = Object.keys(SUBS).sort();
+
+// Distância de Levenshtein, como o cobra usa para sugerir comandos.
+function distancia(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}

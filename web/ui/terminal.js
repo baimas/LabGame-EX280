@@ -1,7 +1,7 @@
 // Terminal do jogo: edição de linha, histórico e autocompletar sobre o xterm.js,
 // ligado ao shell simulado.
 import { Abort } from '../sim/shell.js';
-import { OC_SUBS } from '../sim/oc/index.js';
+import { candidatos as candidatosOc } from '../sim/oc/completar.js';
 import { KINDS, kindOf } from '../sim/resources.js';
 
 const TEMA = {
@@ -266,20 +266,18 @@ export class GameTerminal {
     };
     if (palavras.length === 1) return Object.keys(shell.cmds);
     if (palavras[0] !== 'oc' && palavras[0] !== 'kubectl') return arquivos();
-    if (palavras.length === 2) return OC_SUBS;
-    if (atual.startsWith('-')) return ['--namespace', '--output', '--selector', '--filename', '--all-namespaces', '--show-labels', '--replicas', '--image', '--port', '--dry-run=client', '--from-literal', '--from-file', '--hostname', '--type', '--patch', '--field-selector'];
-    const anterior = palavras.at(-2);
-    if (anterior === '-f' || anterior === '--filename' || /^[.~/]/.test(atual)) return arquivos();
-    if (anterior === '-n' || anterior === '--namespace' || (palavras.length === 3 && palavras[1] === 'project')) return cluster.list('Namespace').map((n) => n.metadata.name);
+    // Mesmo comportamento do Tab com o `oc` 4.22 real (dados do binário oficial).
     const ns = env.session.namespace;
-    const nomes = (k) => cluster.list(k.alias || k.kind, k.namespaced ? ns : null).map((o) => o.metadata.name);
-    if (atual.includes('/')) {
-      const k = kindOf(atual.split('/')[0]);
-      return k ? nomes(k).map((n) => `${atual.split('/')[0]}/${n}`) : arquivos();
-    }
-    const k = kindOf(anterior);
-    if (k && palavras.length > 3) return nomes(k);
-    return [...KINDS.flatMap((x) => [x.plural, x.singular]), 'projects', 'project', 'all', ...arquivos()];
+    return candidatosOc(palavras.slice(1, -1), atual, {
+      namespaces: () => cluster.list('Namespace').map((n) => n.metadata.name),
+      nomes: (tipo) => {
+        const k = kindOf(tipo.replace(/\/$/, ''));
+        if (!k) return [];
+        return cluster.list(k.alias || k.kind, k.namespaced ? ns : null).map((o) => o.metadata.name);
+      },
+      arquivos,
+      diretorios: () => arquivos().filter((a) => a.endsWith('/')),
+    });
   }
 
   completa() {

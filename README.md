@@ -35,8 +35,9 @@ Abra http://localhost:8280 no navegador.
 
 1. Escolha uma missão na lista e clique em **Iniciar missão**. O ambiente é preparado como
    no `lab start`, muitas vezes já com algo quebrado.
-2. Resolva no terminal com `oc`. A tecla Tab completa comandos, tipos e nomes de recursos,
-   e `vi arquivo` abre um editor.
+2. Resolva no terminal com `oc`. A tecla Tab funciona como no `oc` 4.22 real (comandos,
+   subcomandos, opções, valores como `-o json`, tipos e nomes de recursos), e `vi arquivo`
+   abre um editor.
 3. Clique em **Corrigir** ou rode `lab grade` para ver o que passou e o que falta.
 4. Cada dica custa parte do XP. A solução comentada fica disponível depois da primeira
    correção, e cada passo pode ser executado direto no terminal.
@@ -212,6 +213,14 @@ e no portal da Red Hat qual versão foi atribuída a você.
 
 Na missão de atualização de minor (4.21 → 4.22), as APIs depreciadas são de um operator
 fictício da Nimbus: o que a prova cobra é o mecanismo (`apirequestcounts` e admin-ack).
+
+### O `oc` do jogo e o `oc` real
+
+Os comandos, subcomandos, apelidos, opções, o autocomplete e o texto do `--help` vieram do
+cliente oficial `oc` 4.22.22 (`scripts/extrai-oc.py`). Comparado com o binário em 1.074
+casos de Tab, o jogo bate em 1.071; as diferenças são de cantos sem uso na prova. Opções
+inexistentes dão os mesmos erros do `oc` real. O que o Tab não reproduz por completo é a lista
+de tipos de recurso de um cluster real: o jogo oferece os tipos que ele simula.
 
 ## Como o projeto é organizado
 

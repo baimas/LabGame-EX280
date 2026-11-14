@@ -93,6 +93,22 @@ export function migra(c) {
     criados++;
   }
   c.side.base = [...new Set([...(c.side.base || []), ...objetosBase().map(chaveBase)])];
+  // Sessões da versão 4.18 do jogo: o cluster passa para a 4.22, como um cluster novo.
+  const cv = c.get('ClusterVersion', 'version');
+  const atual = cv?.status?.history?.find((h) => h.state === 'Completed')?.version || '';
+  if (/^4\.1[89]\./.test(atual)) {
+    cv.spec.channel = 'stable-4.22';
+    delete cv.spec.desiredUpdate;
+    cv.status.desired = { version: VERSAO };
+    cv.status.history = [{ state: 'Completed', version: VERSAO, startedTime: c.iso(), completionTime: c.iso(), verified: true }];
+    for (const x of cv.status.conditions || []) {
+      if (x.type === 'Progressing') Object.assign(x, { status: 'False', message: `Cluster version is ${VERSAO}` });
+      if (x.type === 'Available') x.message = `Done applying ${VERSAO}`;
+    }
+    for (const co of c.list('ClusterOperator')) co.status.versions = [{ name: 'operator', version: VERSAO }];
+    for (const n of c.list('Node')) Object.assign(n.status.nodeInfo, { kubeletVersion: KUBE, containerRuntimeVersion: 'cri-o://1.35.5', osImage: 'Red Hat Enterprise Linux CoreOS' });
+    c.side.update = {};
+  }
   if (criados) c.tick(60);
 }
 
