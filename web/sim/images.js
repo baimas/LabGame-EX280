@@ -102,7 +102,7 @@ export function parseRef(ref) {
 // Devolve {image, tag, digest} ou {error: 'repo' | 'manifest'}.
 export function findImage(ref) {
   const { repo, tag, digest } = parseRef(ref);
-  if (repo.startsWith('quay.io/openshift-release-dev/')) return { image: SISTEMA, tag: 'latest', digest: fakeDigest(ref) };
+  if (repo.startsWith('quay.io/openshift-release-dev/') || repo.startsWith('registry.redhat.io/')) return { image: SISTEMA, tag: 'latest', digest: fakeDigest(ref) };
   const image = IMAGES.find((i) => i.repo === repo);
   if (!image) return { error: 'repo', repo, tag, digest };
   if (digest) {

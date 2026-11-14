@@ -121,6 +121,26 @@ const COLUNAS = {
       return [idade(o, c), lista((r) => !r.startsWith('limits.')), lista((r) => r.startsWith('limits.'))];
     },
   },
+  ClusterServiceVersion: {
+    head: ['NAME', 'DISPLAY', 'VERSION', 'REPLACES', 'PHASE'],
+    row: (o) => [o.spec?.displayName || '', o.spec?.version || '', o.spec?.replaces || '', o.status?.phase || ''],
+  },
+  InstallPlan: {
+    head: ['NAME', 'CSV', 'APPROVAL', 'APPROVED'],
+    row: (o) => [(o.spec?.clusterServiceVersionNames || []).join(','), o.spec?.approval || '', String(Boolean(o.spec?.approved))],
+  },
+  Subscription: {
+    head: ['NAME', 'PACKAGE', 'SOURCE', 'CHANNEL'],
+    row: (o) => [o.spec?.name || '', o.spec?.source || '', o.spec?.channel || ''],
+  },
+  CatalogSource: {
+    head: ['NAME', 'DISPLAY', 'TYPE', 'PUBLISHER', 'AGE'],
+    row: (o, c) => [o.spec?.displayName || '', o.spec?.sourceType || '', o.spec?.publisher || '', idade(o, c)],
+  },
+  PackageManifest: {
+    head: ['NAME', 'CATALOG', 'AGE'],
+    row: (o, c) => [o.status?.catalogSourceDisplayName || '', idade(o, c)],
+  },
   LimitRange: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
   ClusterResourceQuota: {
     head: ['NAME', 'LABEL SELECTOR', 'ANNOTATION SELECTOR'],

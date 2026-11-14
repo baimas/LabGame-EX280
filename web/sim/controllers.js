@@ -6,9 +6,11 @@ import { oauthCtl } from './rbac.js';
 import { umCert, umaChave, certDeServico, SERVICE_CA } from './tls.js';
 import { quotaCtl } from './quota.js';
 import { projetoCtl } from './projetos.js';
+import { olmCtl } from './olm.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
+    olmCtl(c);
     deployments(c);
     replicasets(c);
     pods(c);

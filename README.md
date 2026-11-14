@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 7 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Projeto em construção: 8 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -54,7 +54,7 @@ navegador.
 | 4. Segurança de rede | Routes, TLS, network policies | 5 missões |
 | 5. Além do HTTP | LoadBalancer, acesso externo | 4 missões |
 | 6. Autosserviço | Quotas, limit ranges, project template | 5 missões |
-| 7. Operators | Instalar e remover operators | em construção |
+| 7. Operators | Instalar e remover operators | 4 missões |
 | 8. Segurança de aplicações | Service accounts, SCC, jobs, cron jobs | em construção |
 | 9. Updates | Atualização do cluster e de operators | em construção |
 
@@ -116,6 +116,15 @@ Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e 
 - **Um orçamento para o time Órion:** `ClusterResourceQuota` por label de projeto.
 - **Todo projeto nasce pronto:** template de criação de projetos com quota e limit range.
 - **Projeto só com pedido:** self-provisioner restrito a um grupo, à prova de reinício do servidor de API.
+
+**Capítulo 7 — Operators**
+
+- **Um vigia para os arquivos:** instalação pela CLI com `OperatorGroup` e `Subscription`.
+- **Versão homologada:** `startingCSV`, aprovação manual e install plans.
+- **O terminal que nunca chegou:** subscription travada (canal errado, modo de instalação não suportado) e dependências.
+- **Desligando o que ninguém usa:** remoção completa de um operator (subscription e CSV).
+
+A instalação de operators pelo console web não é simulada; o jogo cobre o caminho pela CLI.
 
 ## Usuários do laboratório
 

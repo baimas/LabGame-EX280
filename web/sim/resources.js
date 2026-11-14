@@ -52,6 +52,14 @@ export const KINDS = [
   def('MetalLB', 'metallbs', [], true, 'metallb.io/v1beta1'),
   def('IPAddressPool', 'ipaddresspools', [], true, 'metallb.io/v1beta1'),
   def('L2Advertisement', 'l2advertisements', [], true, 'metallb.io/v1beta1'),
+  def('CatalogSource', 'catalogsources', ['catsrc'], true, 'operators.coreos.com/v1alpha1'),
+  // No OpenShift é namespaced, mas aparece em qualquer namespace; aqui fica global.
+  def('PackageManifest', 'packagemanifests', [], false, 'packages.operators.coreos.com/v1'),
+  def('OperatorGroup', 'operatorgroups', ['og'], true, 'operators.coreos.com/v1'),
+  def('Subscription', 'subscriptions', ['sub', 'subs'], true, 'operators.coreos.com/v1alpha1'),
+  def('InstallPlan', 'installplans', ['ip'], true, 'operators.coreos.com/v1alpha1'),
+  def('ClusterServiceVersion', 'clusterserviceversions', ['csv', 'csvs'], true, 'operators.coreos.com/v1alpha1'),
+  def('FileIntegrity', 'fileintegrities', [], true, 'fileintegrity.openshift.io/v1alpha1'),
   def('ClusterResourceQuota', 'clusterresourcequotas', ['clusterquota'], false, 'quota.openshift.io/v1'),
 ];
 

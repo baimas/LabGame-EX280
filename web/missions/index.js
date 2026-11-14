@@ -34,6 +34,10 @@ import limitrange from './c6/limitrange.js';
 import clusterquota from './c6/clusterquota.js';
 import templateProjeto from './c6/template-projeto.js';
 import selfProvisioner from './c6/self-provisioner.js';
+import instalarOp from './c7/instalar.js';
+import manualOp from './c7/manual.js';
+import travadoOp from './c7/travado.js';
+import removerOp from './c7/remover.js';
 
 export const CHAPTERS = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude] },
@@ -43,7 +47,7 @@ export const CHAPTERS = [
   { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [edge, passthrough, serviceCa, netpolIsola, netpolConserto] },
   { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [loadbalancer, metallb, nodeport, troubleshootLb] },
   { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [quotaMissao, limitrange, clusterquota, templateProjeto, selfProvisioner] },
-  { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [] },
+  { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [instalarOp, manualOp, travadoOp, removerOp] },
   { id: 'c8', title: { pt: 'Segurança de aplicações', en: 'Application security' }, domain: { pt: 'Service accounts, SCC, jobs e cron jobs', en: 'Service accounts, SCCs, jobs, and cron jobs' }, missions: [] },
   { id: 'c9', title: { pt: 'Updates', en: 'Updates' }, domain: { pt: 'Atualização do cluster e de operators', en: 'Cluster and operator updates' }, missions: [] },
 ];
@@ -98,5 +102,8 @@ const OBJETIVOS_EN = {
   'Gerenciar o consumo de recursos de aplicações': 'Manage application resource usage',
   'Configurar o template de criação de projetos': 'Configure project templates',
   'Configurar o autoprovisionamento de projetos': 'Configure project self-provisioning',
+  'Instalar operators': 'Install operators',
+  'Excluir operators': 'Delete operators',
+  'Atualizar operators': 'Update operators',
 };
 export const objective = (texto, idioma) => (idioma === 'en' ? OBJETIVOS_EN[texto] || texto : texto);
