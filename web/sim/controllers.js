@@ -227,6 +227,8 @@ function deployments(c) {
       atual.metadata.annotations[REV] = String(maior + 1);
     }
     (d.metadata.annotations ??= {})[REV] = String(rev(atual));
+    const causa = d.metadata.annotations['kubernetes.io/change-cause'];
+    if (causa !== undefined) atual.metadata.annotations['kubernetes.io/change-cause'] = causa;
     atual.spec.replicas = d.spec.replicas;
 
     // Os replica sets antigos descem conforme os pods novos ficam prontos,

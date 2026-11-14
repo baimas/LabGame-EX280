@@ -8,7 +8,7 @@ export default {
   minutes: 20,
   xp: 180,
   difficulty: 3,
-  objectives: ['Visualizar logs', 'Monitorar eventos do cluster', 'Solucionar problemas comuns de contêineres e pods'],
+  objectives: ['Visualizar logs', 'Monitorar eventos e alertas do cluster', 'Solucionar problemas comuns de contêineres e pods'],
   title: { pt: 'Plantão: três aplicações fora do ar', en: 'On call: three applications down' },
   startNamespace: 'default',
   story: {

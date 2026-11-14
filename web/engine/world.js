@@ -28,6 +28,7 @@ export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, sal
   };
   const shell = new Shell(env);
   if (salvo?.cwd) shell.cwd = salvo.cwd;
+  if (salvo?.vars) Object.assign(shell.vars, salvo.vars);
 
   const w = {
     env,
@@ -59,7 +60,7 @@ export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, sal
       const m = url.match(/^(https?):\/\/([^/:]+)(?::(\d+))?(\/.*)?$/);
       return requisicao(cluster, null, { https: m[1] === 'https', host: m[2], porta: m[3] ? Number(m[3]) : null, caminho: m[4] || '/' });
     },
-    serialize: () => ({ cluster: cluster.serialize(), fs: fs.serialize(), session: env.session, cwd: shell.cwdEstacao() }),
+    serialize: () => ({ cluster: cluster.serialize(), fs: fs.serialize(), session: env.session, cwd: shell.cwdEstacao(), vars: shell.varsEstacao() }),
   };
   return w;
 }

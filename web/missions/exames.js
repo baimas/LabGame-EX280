@@ -8,12 +8,12 @@ export const SIMULADOS = [
   {
     id: 'prova-a',
     title: { pt: 'Simulado A', en: 'Practice exam A' },
-    partes: ['c0-plantao', 'c1-manifestos', 'c1-kustomize-base', 'c2-templates', 'c2-helm-install', 'c3-grupos', 'c4-edge', 'c4-netpol-isola', 'c5-loadbalancer', 'c6-quota', 'c6-template-projeto', 'c7-instalar', 'c8-anyuid', 'c8-cronjob', 'c9-zstream'],
+    partes: ['c0-plantao', 'c1-manifestos', 'c1-kustomize-base', 'c2-templates', 'c2-rollback', 'c2-helm-install', 'c3-grupos', 'c4-edge', 'c4-netpol-isola', 'c5-loadbalancer', 'c6-quota', 'c6-template-projeto', 'c7-instalar', 'c8-anyuid', 'c8-job', 'c8-cronjob', 'c9-zstream'],
   },
   {
     id: 'prova-b',
     title: { pt: 'Simulado B', en: 'Practice exam B' },
-    partes: ['c0-imagens', 'c1-configuracao', 'c2-replicasets', 'c2-helm-upgrade', 'c3-usuarios', 'c4-passthrough', 'c4-service-ca', 'c5-nodeport', 'c5-metallb', 'c6-limitrange', 'c6-clusterquota', 'c7-manual', 'c8-api', 'c8-scc-diagnostico', 'c9-operador'],
+    partes: ['c0-imagens', 'c1-configuracao', 'c1-exportar', 'c2-replicasets', 'c2-helm-upgrade', 'c3-usuarios', 'c4-passthrough', 'c4-service-ca', 'c5-nodeport', 'c5-metallb', 'c6-limitrange', 'c6-clusterquota', 'c7-manual', 'c8-api', 'c8-privilegiado', 'c8-scc-diagnostico', 'c9-operador'],
   },
 ];
 

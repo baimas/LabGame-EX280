@@ -12,7 +12,7 @@ export default {
   minutes: 25,
   xp: 240,
   difficulty: 2,
-  objectives: ['Agendar tarefas com jobs e cron jobs', 'Usar a CLI para gerenciar o cluster'],
+  objectives: ['Configurar cron jobs', 'Executar tarefas únicas com jobs', 'Usar a CLI para gerenciar o cluster'],
   title: { pt: 'A conciliação da madrugada', en: 'The overnight reconciliation' },
   story: {
     pt: 'O Financeiro concilia as faturas todo dia útil, às 2h da manhã, com um script que roda num servidor esquecido embaixo de uma mesa. A tarefa vai para o cluster. Hoje, excepcionalmente, a conciliação precisa rodar já.',

@@ -11,7 +11,7 @@ export default {
   minutes: 20,
   xp: 220,
   difficulty: 2,
-  objectives: ['Configurar quotas de recursos por projeto', 'Gerenciar o consumo de recursos de aplicações'],
+  objectives: ['Configurar quotas de recursos por projeto', 'Configurar os requisitos de recursos do projeto'],
   title: { pt: 'Teto de gastos', en: 'Spending cap' },
   story: {
     pt: 'O Marketing vai rodar uma campanha grande e o Financeiro quer garantia de que o projeto não vai engolir o cluster. Antes de aumentar as réplicas, o projeto ganha um teto de consumo.',

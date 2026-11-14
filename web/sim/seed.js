@@ -41,8 +41,15 @@ export function seed(c) {
 
   for (const nome of NAMESPACES) c.create({ kind: 'Namespace', metadata: { name: nome, labels: ROTULOS[nome] } });
   for (const o of objetosBase()) c.create(o);
+  c.side.base = objetosBase().map(chaveBase);
   seedResto(c, agora);
 }
+
+const chaveBase = (o) => `${kindDoObjeto(o).kind}/${o.metadata.namespace || ''}/${o.metadata.name}`;
+
+// Objetos da instalação que as missões mandam apagar: numa sessão antiga, se
+// faltarem, foi o jogador quem apagou, e não devem voltar.
+const APAGAVEIS = ['Secret/kube-system/kubeadmin', 'ClusterRoleBinding//self-provisioners'];
 
 // Labels que as network policies usam para liberar o tráfego do roteador e do monitoramento.
 const ROTULOS = {
@@ -76,10 +83,17 @@ export function migra(c) {
     const ns = c.get('Namespace', nome);
     if (ns) ns.metadata.labels = { ...labels, ...ns.metadata.labels };
   }
+  // Só entram os objetos que nunca existiram nesta sessão; o que o jogador
+  // apagou continua apagado.
+  const conhecidos = new Set(c.side.base || APAGAVEIS);
+  let criados = 0;
   for (const o of objetosBase()) {
-    if (!c.get(kindDoObjeto(o), o.metadata.name, o.metadata.namespace)) c.create(o);
+    if (conhecidos.has(chaveBase(o)) || c.get(kindDoObjeto(o), o.metadata.name, o.metadata.namespace)) continue;
+    c.create(o);
+    criados++;
   }
-  c.tick(60);
+  c.side.base = [...new Set([...(c.side.base || []), ...objetosBase().map(chaveBase)])];
+  if (criados) c.tick(60);
 }
 
 function seedResto(c, agora) {

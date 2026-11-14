@@ -52,20 +52,20 @@ browser.
 
 | Chapter | Exam domain | Status |
 |---|---|---|
-| 0. First day | Manage OpenShift Container Platform | 5 missions |
-| 1. Declarative management | Manifests, Kustomize, secrets, config maps | 4 missions |
-| 2. Packaged applications | Templates, Helm, services, labels | 6 missions |
+| 0. First day | Manage OpenShift Container Platform | 6 missions |
+| 1. Declarative management | Manifests, Kustomize, secrets, config maps, import and export | 5 missions |
+| 2. Packaged applications | Templates, Helm, rollouts, services, labels | 7 missions |
 | 3. Identity | HTPasswd, users, groups, RBAC | 5 missions |
 | 4. Network security | Routes, TLS, network policies | 5 missions |
 | 5. Beyond HTTP | LoadBalancer, external access | 4 missions |
 | 6. Self-service | Quotas, limit ranges, project template | 5 missions |
 | 7. Operators | Install and remove operators | 4 missions |
-| 8. Application security | Service accounts, SCCs, jobs, cron jobs | 4 missions |
+| 8. Application security | Service accounts, SCCs, privileged applications, jobs, cron jobs | 6 missions |
 | 9. Updates | Cluster and operator updates | 4 missions |
 
 ### Exam mode
 
-Two practice exams (A and B), with 15 tasks each, covering every domain on a single cluster:
+Two practice exams (A and B), with 17 tasks each, covering every domain on a single cluster:
 
 - A 3-hour countdown; when time runs out, the exam is submitted automatically.
 - No hints, no solution, and no `lab grade`: grading only happens when you submit.
@@ -84,6 +84,7 @@ take it before playing the missions it uses, or save it for the end.
 - **A tag is not a contract:** inspect images and reference them by digest.
 - **On call: three applications down:** troubleshooting with logs, events, and `describe`.
 - **Health check:** cluster operators, cluster version, and warning events.
+- **Just the manual:** find fields and options with `oc explain` and `--help`, as in the exam, with no internet.
 
 **Chapter 1 — Declarative management**
 
@@ -91,11 +92,13 @@ take it before playing the missions it uses, or save it for the end.
 - **Configuration out of the image:** config maps and secrets as variables and as files.
 - **Kustomize: the base:** write a `kustomization.yaml` with generators and labels.
 - **Kustomize: one base, two environments:** overlays with `namespace`, `replicas`, `images`, and `patches`.
+- **Moving house:** export resources to YAML, strip the cluster fields, and import them into another project.
 
 **Chapter 2 — Packaged applications**
 
 - **A pod in quarantine:** replica set, selector, and labels, and a service that ignores the isolated pod.
 - **Store is down:** troubleshooting a route, service, selector, and `targetPort`.
+- **One step back:** `oc rollout history`, `undo --to-revision`, and `change-cause`.
 - **A database from the catalog:** `oc process --parameters` and `oc new-app --template` with generated parameters.
 - **A template for the Catalog team:** publish a template in the project and use it with `--param-file`.
 - **Helm: the first chart:** `helm repo add`, `helm show values`, and `helm install` with a values file.
@@ -144,8 +147,10 @@ Installing operators through the web console is not simulated; the game covers t
 **Chapter 8 — Application security**
 
 - **The legacy that demands root:** a dedicated service account with the `anyuid` SCC and `oc set serviceaccount`.
+- **An agent with the node key:** a privileged container with the `privileged` SCC tied to one account.
 - **Nobody here needs root:** a pod refused by every SCC and `oc adm policy scc-subject-review`.
 - **Who watches the pods:** an application that reads the cluster API with a service account and the `view` role in two projects.
+- **A one-time migration:** jobs with `completions`, `parallelism`, and `backoffLimit`, and the immutable template.
 - **The overnight reconciliation:** a cron job with schedule, history, and concurrency, and a job triggered from it.
 
 **Chapter 9 — Updates**
@@ -154,6 +159,20 @@ Installing operators through the web console is not simulated; the game covers t
 - **On to 4.19:** `apirequestcounts`, admin-ack for removed APIs, channel switch, and a minor version update.
 - **One channel ahead:** switching an operator channel with manual approval.
 - **Platform oral exam:** five questions on channels, rollback, EUS, and operator updates.
+
+## Coverage of the official objectives
+
+The objectives from the [official exam page](https://www.redhat.com/en/services/training/red-hat-certified-openshift-administrator-exam)
+are recorded in `web/missions/objetivos.js`, with their exact wording, and a test makes sure
+each one has at least one mission. What is left out or only partly covered:
+
+- **Web console:** not simulated. The same tasks are practiced through the CLI.
+- **Alerts:** events are simulated; Prometheus and Alertmanager alerts are not.
+- **Product documentation:** practiced with `oc explain` and `--help`; the Red Hat HTML
+  documentation is not in the game.
+
+Chapter 9 (updates) comes from the DO280 course and is not in the current exam list; it is
+extra content.
 
 ## Lab users
 
@@ -179,7 +198,13 @@ for the current version and objectives.
 - `web/engine/` — mission setup and grading, scoring, and progress.
 - `web/missions/` — the missions. Each one carries its task, hints, checks, and solution in Portuguese and English.
 - `web/ui/` and `web/app.js` — the interface and the terminal.
-- `test/` — for each mission, checks that the initial environment fails and that the documented solution passes.
+- `test/` — the test suites:
+  - `missions`: each mission starts failing and the documented solution passes;
+  - `robustez`: solutions in English, reloading the page after every command, with no garbage output;
+  - `armadilhas`: common wrong shortcuts must fail;
+  - `exames`: each practice exam runs in full on a single cluster and reaches 300;
+  - `cobertura`: every official objective has a mission;
+  - `varredura` and `simulador`: every `oc` resource type and subcommand, and simulator rules.
 
 To run the tests:
 

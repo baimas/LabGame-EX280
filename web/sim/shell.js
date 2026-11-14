@@ -97,6 +97,11 @@ export class Shell {
   }
 
   // Diretório da estação de trabalho, mesmo com uma sessão no pod aberta.
+  // Variáveis da estação de trabalho (fora de um `oc rsh`), salvas com a sessão.
+  varsEstacao() {
+    return { ...(this.pod ? this.salvo.vars : this.vars) };
+  }
+
   cwdEstacao() {
     return this.salvo ? this.salvo.cwd : this.cwd;
   }

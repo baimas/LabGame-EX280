@@ -9,7 +9,7 @@ export default {
   minutes: 15,
   xp: 200,
   difficulty: 2,
-  objectives: ['Excluir operators', 'Usar a CLI para gerenciar o cluster'],
+  objectives: ['Desinstalar operators', 'Excluir operators', 'Usar a CLI para gerenciar o cluster'],
   title: { pt: 'Desligando o que ninguém usa', en: 'Switching off what nobody uses' },
   story: {
     pt: 'A Nimbus migrou os logs para um serviço externo, mas o operator de Logging continua instalado, consumindo recursos e aparecendo nos relatórios de atualização. Hora de removê-lo de vez.',

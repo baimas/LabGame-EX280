@@ -34,7 +34,7 @@ export default {
     ],
   },
   hints: [
-    { pt: 'Os recursos são do grupo `metallb.io/v1beta1`: `IPAddressPool` com `spec.addresses` e `L2Advertisement` com `spec.ipAddressPools`. `oc explain` não cobre CRDs aqui, mas `oc describe svc` mostra os eventos do MetalLB.', en: 'The resources belong to `metallb.io/v1beta1`: `IPAddressPool` with `spec.addresses` and `L2Advertisement` with `spec.ipAddressPools`. `oc explain` does not cover CRDs here, but `oc describe svc` shows the MetalLB events.' },
+    { pt: 'Os recursos são do grupo `metallb.io/v1beta1`: `IPAddressPool` com `spec.addresses` e `L2Advertisement` com `spec.ipAddressPools`. `oc explain ipaddresspool.spec` mostra os campos, e `oc describe svc` mostra os eventos do MetalLB.', en: 'The resources belong to `metallb.io/v1beta1`: `IPAddressPool` with `spec.addresses` and `L2Advertisement` with `spec.ipAddressPools`. `oc explain ipaddresspool.spec` shows the fields, and `oc describe svc` shows the MetalLB events.' },
     { pt: 'Um IP fixo é pedido com a anotação `metallb.universe.tf/loadBalancerIPs` no service.', en: 'A fixed IP is requested with the `metallb.universe.tf/loadBalancerIPs` annotation on the service.' },
     { pt: 'IP alocado mas sem resposta? Falta o anúncio L2 para o pool dele.', en: 'IP allocated but no answer? The L2 advertisement for its pool is missing.' },
   ],

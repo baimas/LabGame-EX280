@@ -87,6 +87,9 @@ export class Cluster {
     const chave = this.chave(k, o.metadata.namespace, o.metadata.name);
     if (this.objs.has(chave)) throw doServidor('AlreadyExists', `${k.resource} "${o.metadata.name}" already exists`);
     this.validar(o);
+    if (o.kind === 'Service' && o.spec?.clusterIP && o.spec.clusterIP !== 'None' && this.list('Service').some((s) => s.spec.clusterIP === o.spec.clusterIP)) {
+      throw invalido(o, `spec.clusterIPs: Invalid value: []string{"${o.spec.clusterIP}"}: failed to allocate IP ${o.spec.clusterIP}: provided IP is already allocated`);
+    }
     this.padroes(o);
     admite(this, o);
     o.metadata.uid = uuid(`${chave}#${this.seq++}`);
@@ -105,6 +108,10 @@ export class Cluster {
     if (!atual) throw doServidor('NotFound', `${k.resource} "${o.metadata.name}" not found`);
     this.validar(o);
     this.padroes(o);
+    if (o.kind === 'Job' && JSON.stringify(o.spec.template) !== JSON.stringify(atual.spec.template)) {
+      throw invalido(o, 'spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable');
+    }
+    if (o.kind === 'Job' && o.spec.completions !== atual.spec.completions) throw invalido(o, `spec.completions: Invalid value: ${o.spec.completions}: field is immutable`);
     o.metadata.uid = atual.metadata.uid;
     o.metadata.creationTimestamp = atual.metadata.creationTimestamp;
     o.metadata.resourceVersion = String(1000 + this.seq++);

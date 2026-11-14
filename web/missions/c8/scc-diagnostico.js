@@ -1,7 +1,8 @@
 import { deployment } from '../../engine/world.js';
 
 const NS = 'metrics';
-const ehSa = (s) => s.kind === 'ServiceAccount' || String(s.name).startsWith('system:serviceaccount');
+// Conta de serviço do projeto da missão (outras missões podem dar SCC às suas).
+const ehSa = (s) => (s.kind === 'ServiceAccount' && s.namespace === NS) || String(s.name).startsWith(`system:serviceaccount:${NS}:`) || s.name === `system:serviceaccounts:${NS}`;
 
 export default {
   id: 'c8-scc-diagnostico',
@@ -18,12 +19,12 @@ export default {
     pt: [
       'No projeto `metrics`, o deployment `collector` deve voltar a rodar com 2 réplicas prontas.',
       'Os pods devem ser admitidos pela SCC `restricted-v2`.',
-      'Não conceda SCC nenhuma a service accounts.',
+      'Não conceda SCC nenhuma às service accounts do projeto.',
     ],
     en: [
       'In the `metrics` project, the `collector` deployment must run again with 2 ready replicas.',
       'The pods must be admitted by the `restricted-v2` SCC.',
-      'Do not grant any SCC to service accounts.',
+      'Do not grant any SCC to the project service accounts.',
     ],
   },
   hints: [
@@ -45,7 +46,7 @@ export default {
       test: (w) => w.pods(NS, { app: 'collector' }).every((p) => p.metadata.annotations?.['openshift.io/scc'] === 'restricted-v2'),
     },
     {
-      text: { pt: 'Nenhuma SCC foi concedida a service accounts', en: 'No SCC was granted to service accounts' },
+      text: { pt: 'Nenhuma SCC foi concedida às contas do projeto', en: 'No SCC was granted to the project accounts' },
       test: (w) => !w.list('ClusterRoleBinding').some((b) => b.roleRef.name.startsWith('system:openshift:scc:') && b.roleRef.name !== 'system:openshift:scc:restricted-v2' && (b.subjects || []).some(ehSa)) && !w.list('RoleBinding', NS).some((b) => b.roleRef.name.startsWith('system:openshift:scc:')),
     },
   ],

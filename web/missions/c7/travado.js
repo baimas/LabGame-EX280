@@ -9,7 +9,7 @@ export default {
   minutes: 25,
   xp: 260,
   difficulty: 3,
-  objectives: ['Instalar operators', 'Excluir operators', 'Solucionar problemas comuns de contêineres e pods'],
+  objectives: ['Instalar operators', 'Desinstalar operators', 'Solucionar problemas comuns de contêineres e pods'],
   title: { pt: 'O terminal que nunca chegou', en: 'The terminal that never arrived' },
   story: {
     pt: 'Um estagiário tentou instalar o Web Terminal para os desenvolvedores, criou um projeto só para isso e foi embora. Faz dois dias que nada acontece, e o time quer o terminal disponível em todos os projetos.',

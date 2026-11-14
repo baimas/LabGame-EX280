@@ -52,6 +52,85 @@ function regex(padrao, flags) {
   return new RegExp(padrao.replace(/\\\|/g, '|').replace(/\\([(){}+?])/g, '$1'), flags);
 }
 
+// Compila uma expressão do sed em comandos {de, ate, op, re, troca}.
+function compilaSed(script) {
+  const out = [];
+  let i = 0;
+  const endereco = () => {
+    if (script[i] === '$') {
+      i++;
+      return { tipo: 'ultima' };
+    }
+    const m = script.slice(i).match(/^\d+/);
+    if (m) {
+      i += m[0].length;
+      return { tipo: 'linha', n: Number(m[0]) };
+    }
+    if (script[i] === '/') {
+      const fim = fimDelimitado(script, i + 1, '/');
+      const re = regex(script.slice(i + 1, fim), '');
+      i = fim + 1;
+      return { tipo: 're', re };
+    }
+    return null;
+  };
+  while (i < script.length) {
+    while (/[\s;]/.test(script[i] || '')) i++;
+    if (i >= script.length) break;
+    const c = { de: endereco(), ate: null };
+    if (c.de && script[i] === ',') {
+      i++;
+      c.ate = endereco();
+      if (!c.ate) throw new Error('unexpected `,\'');
+    }
+    while (script[i] === ' ') i++;
+    const op = script[i++];
+    if (op === 'd' || op === 'p') c.op = op;
+    else if (op === 's') {
+      const sep = script[i];
+      const a = fimDelimitado(script, i + 1, sep);
+      const b = fimDelimitado(script, a + 1, sep);
+      let fim = b + 1;
+      while (/[gIi0-9]/.test(script[fim] || '')) fim++;
+      const flags = script.slice(b + 1, fim);
+      c.op = 's';
+      c.re = regex(script.slice(i + 1, a), (flags.includes('g') ? 'g' : '') + (/[Ii]/.test(flags) ? 'i' : ''));
+      c.troca = script.slice(a + 1, b).replace(/\\(\d)/g, '$$$1').replace(/&/g, '$$&').replace(/\\n/g, '\n');
+      i = fim;
+    } else throw new Error(`unknown command: \`${op ?? ''}'`);
+    out.push(c);
+  }
+  return out;
+}
+
+function fimDelimitado(s, ini, sep) {
+  for (let i = ini; i < s.length; i++) {
+    if (s[i] === '\\') i++;
+    else if (s[i] === sep) return i;
+  }
+  throw new Error(`unterminated address regex`);
+}
+
+function casaUm(e, l, n, ultima) {
+  if (e.tipo === 'ultima') return ultima;
+  if (e.tipo === 'linha') return n === e.n;
+  return e.re.test(l);
+}
+
+function casaEndereco(c, l, n, ultima, ativo, k) {
+  if (!c.de) return true;
+  if (!c.ate) return casaUm(c.de, l, n, ultima);
+  if (ativo[k]) {
+    if (casaUm(c.ate, l, n, ultima) || (c.ate.tipo === 'linha' && n >= c.ate.n)) ativo[k] = false;
+    return true;
+  }
+  if (casaUm(c.de, l, n, ultima)) {
+    ativo[k] = !(c.ate.tipo === 'linha' && c.ate.n <= n);
+    return true;
+  }
+  return false;
+}
+
 async function editor(ctx) {
   const arq = ctx.args.find((a) => !a.startsWith('-'));
   if (!arq) return falha(`${ctx.nome}: informe o arquivo a editar`);
@@ -339,31 +418,57 @@ export const builtins = {
   },
 
   sed(ctx) {
-    const { o, pos } = opcoes(ctx.args, 'e');
-    const expr = o.e ?? pos.shift() ?? '';
-    const sep = expr[1];
-    const p = expr[0] === 's' && sep ? expr.slice(2).split(sep) : null;
-    if (!p || p.length < 2) return falha(ctx.env.t("[simulador] sed: só substituições 's/a/b/[g]' são simuladas.", "[simulator] sed: only 's/a/b/[g]' substitutions are simulated."));
-    let re;
-    try {
-      re = regex(p[0], (p[2] || '').includes('g') ? 'g' : '');
-    } catch {
-      return falha(`sed: expressão inválida: ${p[0]}`);
+    // Subconjunto do sed: endereços (N, $, /re/ e faixas addr1,addr2) com os
+    // comandos s, d e p; várias expressões com -e ou separadas por `;`; -n, -i e -E.
+    const scripts = [];
+    const pos = [];
+    let silencioso = false;
+    let noLugar = false;
+    for (let i = 0; i < ctx.args.length; i++) {
+      const a = ctx.args[i];
+      if (a === '-e') scripts.push(ctx.args[++i] ?? '');
+      else if (/^-[nEir]+$/.test(a)) {
+        if (a.includes('n')) silencioso = true;
+        if (a.includes('i')) noLugar = true;
+      } else if (a.startsWith('-i')) noLugar = true;
+      else pos.push(a);
     }
-    const troca = (t) => junta(linhasDe(t).map((l) => l.replace(re, p[1].replace(/\\(\d)/g, '$$$1').replace(/&/g, '$$&'))));
-    if (o.i) {
+    if (!scripts.length) scripts.push(pos.shift() ?? '');
+    let cmds;
+    try {
+      cmds = scripts.flatMap(compilaSed);
+    } catch (e) {
+      return falha(`sed: -e expression #1, char 0: ${e.message}`);
+    }
+    const roda = (texto) => {
+      const linhas = linhasDe(texto);
+      const out = [];
+      const ativo = cmds.map(() => false);
+      linhas.forEach((original, n) => {
+        let l = original;
+        let apaga = false;
+        const ultima = n === linhas.length - 1;
+        cmds.forEach((c, k) => {
+          if (apaga) return;
+          if (!casaEndereco(c, l, n + 1, ultima, ativo, k)) return;
+          if (c.op === 'd') apaga = true;
+          else if (c.op === 'p') out.push(l);
+          else if (c.op === 's') l = l.replace(c.re, c.troca);
+        });
+        if (!apaga && !silencioso) out.push(l);
+      });
+      return junta(out);
+    };
+    if (noLugar) {
       for (const a of pos) {
         const c = ctx.env.fs.resolve(ctx.sh.cwd, a);
-        try {
-          ctx.env.fs.write(c, troca(ctx.env.fs.read(c)));
-        } catch (e) {
-          return falha(`sed: can't read ${a}: ${e.message}`);
-        }
+        if (!ctx.env.fs.isFile(c)) return falha(`sed: can't read ${a}: No such file or directory`);
+        ctx.env.fs.write(c, roda(ctx.env.fs.read(c)));
       }
       return ok();
     }
     const e = entrada(ctx, pos, 'sed');
-    return e.erro || ok(troca(e.texto));
+    return e.erro || ok(roda(e.texto));
   },
 
   base64(ctx) {

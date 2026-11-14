@@ -9,7 +9,7 @@ export default {
   minutes: 20,
   xp: 230,
   difficulty: 3,
-  objectives: ['Configurar limit ranges por projeto', 'Gerenciar o consumo de recursos de aplicações'],
+  objectives: ['Configurar limit ranges por projeto', 'Configurar os requisitos de recursos do projeto'],
   title: { pt: 'Padrão para quem esquece', en: 'Defaults for the forgetful' },
   story: {
     pt: 'No projeto de Analytics ninguém declara requests nem limits, e um job pesado já derrubou o nó uma vez. A regra agora é: quem não declarar recebe um padrão, e ninguém passa de 1 CPU por contêiner.',
@@ -28,7 +28,7 @@ export default {
     ],
   },
   hints: [
-    { pt: 'O limit range é do tipo `Container` com os campos `default`, `defaultRequest` e `max`. `oc explain limitrange.spec.limits` não ajuda aqui, mas a estrutura cabe em 15 linhas de YAML.', en: 'The limit range is of type `Container` with the `default`, `defaultRequest`, and `max` fields. The structure fits in 15 lines of YAML.' },
+    { pt: 'O limit range é do tipo `Container` com os campos `default`, `defaultRequest` e `max`. `oc explain limitrange.spec.limits` mostra cada campo; a estrutura cabe em 15 linhas de YAML.', en: 'The limit range is of type `Container` with the `default`, `defaultRequest`, and `max` fields. `oc explain limitrange.spec.limits` shows each field; the structure fits in 15 lines of YAML.' },
     { pt: 'O limit range só vale para pods criados depois dele. `oc rollout restart deployment etl` recria os pods.', en: 'The limit range only applies to pods created after it. `oc rollout restart deployment etl` recreates the pods.' },
     { pt: 'Se os pods novos não aparecem, procure `FailedCreate` em `oc get events`: o limit de CPU do `report-builder` passa do máximo.', en: 'If the new pods do not show up, look for `FailedCreate` in `oc get events`: the `report-builder` CPU limit is above the maximum.' },
   ],

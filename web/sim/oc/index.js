@@ -65,6 +65,23 @@ function seleciona(ctx, pos, f, verbo) {
   });
 }
 
+// Manifesto com namespace diferente do -n informado: o oc real recusa.
+function confereNs(ctx, f, o) {
+  const pedido = f.one('namespace');
+  const doArquivo = o.metadata?.namespace;
+  if (pedido && doArquivo && pedido !== doArquivo && ctx.env.cluster.tipo(o.kind).namespaced) {
+    throw erro(`error: the namespace from the provided object "${doArquivo}" does not match the namespace "${pedido}". You must pass '--namespace=${doArquivo}' to perform this operation.`);
+  }
+}
+
+// Objeto novo não pode vir com resourceVersion (cópia de um export sem limpar).
+function semVersao(c, o, ns, arquivo) {
+  const k = c.tipo(o.kind);
+  if (o.metadata?.resourceVersion && !c.get(k.kind, o.metadata.name, k.namespaced ? o.metadata.namespace || ns : undefined)) {
+    throw new ApiError(`Error from server (BadRequest): error when creating "${arquivo}": resourceVersion should not be set on objects to be created`, 'BadRequest');
+  }
+}
+
 // Cria o objeto ou, com --dry-run, apenas o exibe.
 function entrega(ctx, f, obj, verbo = 'created') {
   const c = ctx.env.cluster;
@@ -246,6 +263,8 @@ function apply(ctx) {
   let err = '';
   for (const o of fontes(ctx, f)) {
     try {
+      confereNs(ctx, f, o);
+      if (!f.has('dry-run')) semVersao(ctx.env.cluster, o, ns, f.one('filename') || f.one('kustomize'));
       out += f.has('dry-run') ? `${tipoOuErro(o.kind).out}/${o.metadata?.name} configured (dry run)\n` : aplicaUm(ctx, o, ns);
     } catch (e) {
       if (!(e instanceof ApiError)) throw e;
@@ -523,7 +542,9 @@ function create(ctx) {
       try {
         const o = clone(normaliza(bruto));
         o.metadata ??= {};
+        confereNs(ctx, f, o);
         if (c.tipo(o.kind).namespaced) o.metadata.namespace ??= ns;
+        if (o.metadata.resourceVersion && !f.has('dry-run')) throw new ApiError(`Error from server (BadRequest): error when creating "${f.one('filename')}": resourceVersion should not be set on objects to be created`, 'BadRequest');
         out += entrega(ctx, f, o).out;
       } catch (e) {
         if (!(e instanceof ApiError)) throw e;
@@ -1202,6 +1223,7 @@ async function rollout(ctx) {
   const alvoRev = f.has('to-revision') ? Number(f.one('to-revision')) : null;
   const destino = alvoRev ? lista.find((r) => Number(r.metadata.annotations[REV]) === alvoRev) : lista.at(-2);
   if (!destino) throw erro(alvoRev ? `error: unable to find specified revision ${alvoRev} in history` : 'error: no rollout history found for deployment "' + nome + '"');
+  if (destino.metadata.annotations[REV] === d.metadata.annotations?.[REV]) return ok(`deployment.apps/${nome} skipped rollback (current template already matches revision ${destino.metadata.annotations[REV]})\n`);
   const novo = clone(d);
   const tpl = clone(destino.spec.template);
   delete tpl.metadata.labels['pod-template-hash'];
@@ -1587,7 +1609,7 @@ function explain(ctx) {
 // Todos os subcomandos do oc real, para separar "não simulado" de "não existe".
 const OC_REAIS = ['adm', 'annotate', 'api-resources', 'api-versions', 'apply', 'attach', 'auth', 'autoscale', 'cancel-build', 'cluster-info', 'completion', 'config', 'cp', 'create', 'debug', 'delete', 'describe', 'diff', 'edit', 'events', 'exec', 'explain', 'expose', 'extract', 'get', 'idle', 'image', 'import-image', 'kustomize', 'label', 'login', 'logout', 'logs', 'new-app', 'new-build', 'new-project', 'observe', 'options', 'patch', 'plugin', 'policy', 'port-forward', 'process', 'project', 'projects', 'proxy', 'registry', 'replace', 'rollback', 'rollout', 'rsh', 'rsync', 'run', 'scale', 'secrets', 'set', 'start-build', 'status', 'tag', 'version', 'wait', 'whoami'];
 
-const SUBS = {
+export const SUBS = {
   get, describe, apply, create, delete: del, 'new-project': newProject, project, projects, login, whoami,
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
   patch, edit, rollout, logs, process, replace, auth: authCmd, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
