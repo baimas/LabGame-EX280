@@ -141,6 +141,24 @@ const COLUNAS = {
     head: ['NAME', 'CATALOG', 'AGE'],
     row: (o, c) => [o.status?.catalogSourceDisplayName || '', idade(o, c)],
   },
+  Job: {
+    head: ['NAME', 'STATUS', 'COMPLETIONS', 'DURATION', 'AGE'],
+    row: (o, c) => {
+      const tem = (t) => (o.status?.conditions || []).some((x) => x.type === t && x.status === 'True');
+      const status = tem('Complete') ? 'Complete' : tem('Failed') ? 'Failed' : 'Running';
+      const fim = o.status?.completionTime ? Date.parse(o.status.completionTime) / 1000 : c.now;
+      const duracao = o.status?.startTime ? age(fim - Date.parse(o.status.startTime) / 1000) : '';
+      return [status, `${o.status?.succeeded || 0}/${o.spec.completions ?? 1}`, duracao, idade(o, c)];
+    },
+  },
+  CronJob: {
+    head: ['NAME', 'SCHEDULE', 'TIMEZONE', 'SUSPEND', 'ACTIVE', 'LAST SCHEDULE', 'AGE'],
+    row: (o, c) => [o.spec.schedule, o.spec.timeZone || '<none>', String(Boolean(o.spec.suspend)), (o.status?.active || []).length, o.status?.lastScheduleTime ? desde(o.status.lastScheduleTime, c) : '<none>', idade(o, c)],
+  },
+  SecurityContextConstraints: {
+    head: ['NAME', 'PRIV', 'CAPS', 'SELINUX', 'RUNASUSER', 'FSGROUP', 'SUPGROUP', 'PRIORITY', 'READONLYROOTFS', 'VOLUMES'],
+    row: (o) => [String(Boolean(o.allowPrivilegedContainer)), o.allowedCapabilities ? JSON.stringify(o.allowedCapabilities) : '<no value>', o.seLinuxContext?.type || '', o.runAsUser?.type || '', o.fsGroup?.type || '', o.supplementalGroups?.type || '', o.priority ?? '<no value>', String(Boolean(o.readOnlyRootFilesystem)), JSON.stringify(o.volumes || [])],
+  },
   LimitRange: { head: ['NAME', 'CREATED AT'], row: (o) => [o.metadata.creationTimestamp] },
   ClusterResourceQuota: {
     head: ['NAME', 'LABEL SELECTOR', 'ANNOTATION SELECTOR'],

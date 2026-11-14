@@ -3,6 +3,7 @@
 // pods que já existem não mudam quando a regra muda.
 import { ApiError } from './cluster.js';
 import { clone, parseCpu, parseMem, matchLabels } from './util.js';
+import { admiteScc } from './scc.js';
 
 const proibido = (o, msg) => new ApiError(`Error from server (Forbidden): ${o.kind === 'Pod' ? 'pods' : o.kind.toLowerCase() + 's'} "${o.metadata.name}" is forbidden: ${msg}`, 'Forbidden');
 
@@ -168,6 +169,7 @@ export function admiteQuota(c, o) {
 // Admissão completa de um objeto novo.
 export function admite(c, o) {
   if (o.kind === 'Pod') aplicaLimites(c, o);
+  if (o.kind === 'Pod') admiteScc(c, o);
   admiteQuota(c, o);
 }
 

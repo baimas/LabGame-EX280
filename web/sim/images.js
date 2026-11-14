@@ -74,6 +74,13 @@ export const IMAGES = [
   img('ubi9/nginx-120', ['1-148', 'latest=1-148'], {
     logs: () => ['[notice] 1#1: nginx/1.20.1', '[notice] 1#1: start worker processes'],
   }),
+  img('nimbus/legacy-ftp', ['3.0', 'latest=3.0'], {
+    user: '0',
+    root: true,
+    rootLog: ['[legacy-ftp] preparing /var/ftp', 'chown: changing ownership of \'/var/ftp\': Operation not permitted', '[legacy-ftp] FATAL: this image must run as root (UID 0)'],
+    logs: () => ['[legacy-ftp] preparing /var/ftp', '[legacy-ftp] running as root', '[legacy-ftp] listening on 0.0.0.0:8080'],
+  }),
+  img('nimbus/pod-watcher', ['1.0', 'latest=1.0'], { port: null, api: true, logs: () => [] }),
   img('ubi9/ubi', ['9.4', 'latest=9.4'], { port: null, user: '0', exits: 0, size: '78.2MB', logs: () => [] }),
 ];
 

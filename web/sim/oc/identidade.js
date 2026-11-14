@@ -4,7 +4,8 @@ import { ApiError } from '../cluster.js';
 import { kindOf } from '../resources.js';
 import { clone, table } from '../util.js';
 import { pode, regras, grupos } from '../rbac.js';
-import { parseArgs, ok, erro, naoSimulado, nsDe } from './args.js';
+import { parseArgs, ok, erro, naoSimulado, nsDe, lerManifestos } from './args.js';
+import { escolheScc, papelDaScc } from '../scc.js';
 
 const RBAC = 'rbac.authorization.k8s.io';
 
@@ -122,6 +123,9 @@ function politica(ctx, sub, resto) {
   const { pos, f } = parseArgs(resto, ['rolebinding-name']);
   const c = ctx.env.cluster;
   const real = ctx.env.clusterReal;
+  const s = sub.match(/^(add|remove)-scc-(?:to|from)-(user|group)$/);
+  if (s) return politicaScc(ctx, s[1], s[2], pos, f);
+  if (sub === 'scc-subject-review') return revisaoScc(ctx, f);
   const m = sub.match(/^(add|remove)-(cluster-)?role-(?:to|from)-(user|group)$/);
   if (!m) {
     if (sub === 'who-can') return quemPode(ctx, pos, f);
@@ -170,6 +174,67 @@ function politica(ctx, sub, resto) {
   }
   if (!achou) throw erro(`error: unable to find target [${nomesAlvo.join(' ')}]`);
   return ok(`${rotulo} removed: ${textoAlvos(nomesAlvo)}\n`);
+}
+
+function politicaScc(ctx, acao, tipoAlvo, pos, f) {
+  const c = ctx.env.cluster;
+  const real = ctx.env.clusterReal || c;
+  const [nomeScc, ...alvos] = pos;
+  const contas = lista(f, 'serviceaccount').concat(lista(f, 'z'));
+  if (!nomeScc || (!alvos.length && !contas.length)) throw erro(`error: you must specify at least two arguments (<scc> <${tipoAlvo}> [${tipoAlvo}]...) or a service account`);
+  if (!real.get('SecurityContextConstraints', nomeScc)) throw erro(`Error from server (NotFound): securitycontextconstraints.security.openshift.io "${nomeScc}" not found`);
+  const ns = nsDe(ctx, f);
+  const tipo = tipoAlvo === 'user' ? 'User' : 'Group';
+  const novos = [...alvos.map((n) => ({ apiGroup: RBAC, kind: tipo, name: n })), ...contas.map((n) => ({ kind: 'ServiceAccount', name: n, namespace: ns }))];
+  const papel = papelDaScc(nomeScc);
+  if (!real.get('ClusterRole', papel)) c.create({ kind: 'ClusterRole', metadata: { name: papel }, rules: [{ apiGroups: ['security.openshift.io'], resources: ['securitycontextconstraints'], resourceNames: [nomeScc], verbs: ['use'] }] });
+  const igual = (a, b) => a.kind === b.kind && a.name === b.name && (a.kind !== 'ServiceAccount' || a.namespace === b.namespace);
+  const existentes = c.list('ClusterRoleBinding').filter((b) => b.roleRef.kind === 'ClusterRole' && b.roleRef.name === papel);
+  const nomes = [...alvos, ...contas];
+  const rotulo = `clusterrole.rbac.authorization.k8s.io/${papel}`;
+  if (acao === 'add') {
+    if (existentes.length) {
+      const b = clone(existentes[0]);
+      b.subjects = [...(b.subjects || [])];
+      for (const x of novos) if (!b.subjects.some((y) => igual(x, y))) b.subjects.push(x);
+      c.update(b);
+    } else {
+      let nome = papel;
+      for (let i = 0; real.get('ClusterRoleBinding', nome); i++) nome = `${papel}-${i}`;
+      c.create({ kind: 'ClusterRoleBinding', metadata: { name: nome }, roleRef: { apiGroup: RBAC, kind: 'ClusterRole', name: papel }, subjects: novos });
+    }
+    return ok(`${rotulo} added: ${textoAlvos(nomes)}\n`);
+  }
+  let achou = false;
+  for (const atual of existentes) {
+    const b = clone(atual);
+    const antes = (b.subjects || []).length;
+    b.subjects = (b.subjects || []).filter((x) => !novos.some((y) => igual(x, y)));
+    if (b.subjects.length === antes) continue;
+    achou = true;
+    if (b.subjects.length) c.update(b);
+    else c.delete('ClusterRoleBinding', b.metadata.name);
+  }
+  if (!achou) throw erro(`error: unable to find target [${nomes.join(' ')}]`);
+  return ok(`${rotulo} removed: ${textoAlvos(nomes)}\n`);
+}
+
+// Qual SCC admitiria o pod (ou o template de pod) de cada manifesto.
+function revisaoScc(ctx, f) {
+  if (!f.has('filename')) throw erro('error: one of -f or --filename is required');
+  const real = ctx.env.clusterReal || ctx.env.cluster;
+  const ns = nsDe(ctx, f);
+  const linhas = [['RESOURCE', 'ALLOWED BY']];
+  for (const o of lerManifestos(ctx, f)) {
+    const spec = o.kind === 'Pod' ? o.spec : o.kind === 'CronJob' ? o.spec?.jobTemplate?.spec?.template?.spec : o.spec?.template?.spec;
+    if (!spec) throw erro(`error: ${o.kind}/${o.metadata?.name} does not have a pod template`);
+    const pod = { metadata: { name: o.metadata?.name, namespace: o.metadata?.namespace || ns }, spec: clone(spec) };
+    if (f.has('serviceaccount')) pod.spec.serviceAccountName = f.one('serviceaccount');
+    const usuario = f.has('user') ? f.one('user') : undefined;
+    const r = escolheScc(real, pod, usuario);
+    linhas.push([`${o.kind}/${o.metadata?.name}`, r.scc || '<none>']);
+  }
+  return ok(table(linhas));
 }
 
 function quemPode(ctx, pos, f) {

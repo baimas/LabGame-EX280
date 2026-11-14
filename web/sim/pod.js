@@ -8,6 +8,7 @@ import { b64, hashNum } from './util.js';
 import { DNS_IP, KUBE_IP } from './net.js';
 import { KUBE_CA, SERVICE_CA, openssl } from './tls.js';
 import { nc, mysql } from './tcp.js';
+import { uidDoProjeto, uidEfetivo } from './scc.js';
 
 const WORKDIR = '/opt/app-root/src';
 const SA = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -43,10 +44,7 @@ class PodFS extends FS {
   }
 }
 
-// UID atribuído pelo OpenShift ao projeto (faixa por namespace).
-export function uidDoProjeto(ns) {
-  return 1000000000 + (hashNum(ns) % 900 + 50) * 10000;
-}
+export { uidDoProjeto };
 
 function montaFs(c, pod, ct) {
   const fs = new PodFS();
@@ -98,7 +96,7 @@ const ok = (out = '') => ({ out, code: 0 });
 
 function comandos(contexto) {
   const { pod, ct, env } = contexto;
-  const uid = uidDoProjeto(pod.metadata.namespace);
+  const uid = uidEfetivo(pod, ct);
   const img = findImage(ct.image);
   const processo = ct.command?.[0]?.split('/').pop() || (img.image?.repo.includes('mysql') ? 'mysqld' : img.image?.repo.includes('postgres') ? 'postgres' : img.image?.repo.includes('httpd') ? 'httpd' : img.image?.repo.includes('nginx') ? 'nginx' : 'run-app');
   const permitidos = ['echo', 'printf', 'cat', 'pwd', 'cd', 'ls', 'mkdir', 'touch', 'rm', 'cp', 'mv', 'grep', 'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'awk', 'sed', 'base64', 'export', 'true', 'false', 'sleep', 'date', 'clear'];
@@ -115,7 +113,7 @@ function comandos(contexto) {
     },
     hostname: () => ok(pod.metadata.name + '\n'),
     id: () => ok(`uid=${uid}(${uid}) gid=0(root) groups=0(root),${uid}\n`),
-    whoami: () => ({ err: `whoami: cannot find name for user ID ${uid}\n`, code: 1 }),
+    whoami: () => (uid === 0 ? ok('root\n') : { err: `whoami: cannot find name for user ID ${uid}\n`, code: 1 }),
     uname: ({ args }) => ok(args.includes('-a') ? `Linux ${pod.metadata.name} 5.14.0-427.el9.x86_64 #1 SMP x86_64 x86_64 x86_64 GNU/Linux\n` : 'Linux\n'),
     ps: () => ok(`    PID TTY          TIME CMD\n      1 ?        00:00:02 ${processo}\n     42 pts/0    00:00:00 sh\n     57 pts/0    00:00:00 ps\n`),
     curl,

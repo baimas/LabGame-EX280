@@ -7,10 +7,15 @@ import { umCert, umaChave, certDeServico, SERVICE_CA } from './tls.js';
 import { quotaCtl } from './quota.js';
 import { projetoCtl } from './projetos.js';
 import { olmCtl } from './olm.js';
+import { jobsCtl, cronCtl } from './jobs.js';
+import { uidEfetivo } from './scc.js';
+import { pode } from './rbac.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
     olmCtl(c);
+    cronCtl(c);
+    jobsCtl(c);
     deployments(c);
     replicasets(c);
     pods(c);
@@ -404,6 +409,17 @@ function diagnosticar(c, pod, ct) {
   const contexto = { tag: achada.tag, env: r.env, pod };
   if (ct.command || ct.args) return peloComando([...(ct.command || []), ...(ct.args || [])]);
   if (img.requires && !img.requires.some((grupo) => grupo.every((v) => r.env[v]))) return { tipo: 'sai', codigo: 1, apos: 0, logs: img.crashLog };
+  // Imagem que só funciona como root.
+  if (img.root && uidEfetivo(pod, ct) !== 0) return { tipo: 'sai', codigo: 1, apos: 0, logs: img.rootLog };
+  // Aplicação que consulta a API com a service account do pod.
+  if (img.api) {
+    const ns = pod.metadata.namespace;
+    const sa = `system:serviceaccount:${ns}:${pod.spec.serviceAccountName || 'default'}`;
+    const alvos = String(r.env.WATCH_NAMESPACES || ns).split(',').map((x) => x.trim()).filter(Boolean);
+    const negado = alvos.find((n) => !pode(c, sa, 'list', 'pods', '', n));
+    if (negado) return { tipo: 'sai', codigo: 1, apos: 1, logs: ['[pod-watcher] using in-cluster configuration', `[pod-watcher] Error: pods is forbidden: User "${sa}" cannot list resource "pods" in API group "" in the namespace "${negado}"`] };
+    return { tipo: 'roda', logs: ['[pod-watcher] using in-cluster configuration', ...alvos.map((n) => `[pod-watcher] watching ${c.list('Pod', n).length} pods in namespace ${n}`)] };
+  }
   if (img.exits !== undefined) return { tipo: 'sai', codigo: img.exits, apos: 1, logs: img.logs(contexto) };
   const tls = img.repo.includes('/nimbus/') ? tlsDaAplicacao(c, pod, ct, r.env) : null;
   if (tls?.erro) return { tipo: 'sai', codigo: 1, apos: 0, logs: [`[${img.repo.split('/').pop()}] loading TLS certificate from ${r.env.TLS_DIR}`, `[${img.repo.split('/').pop()}] FATAL: ${tls.erro}`] };

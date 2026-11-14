@@ -8,7 +8,7 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Projeto em construção: 8 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
+> Projeto em construção: 9 de 10 capítulos estão jogáveis. Veja [Estado atual](#estado-atual).
 
 ## Como rodar
 
@@ -55,7 +55,7 @@ navegador.
 | 5. Além do HTTP | LoadBalancer, acesso externo | 4 missões |
 | 6. Autosserviço | Quotas, limit ranges, project template | 5 missões |
 | 7. Operators | Instalar e remover operators | 4 missões |
-| 8. Segurança de aplicações | Service accounts, SCC, jobs, cron jobs | em construção |
+| 8. Segurança de aplicações | Service accounts, SCC, jobs, cron jobs | 4 missões |
 | 9. Updates | Atualização do cluster e de operators | em construção |
 
 Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e sem dicas.
@@ -125,6 +125,13 @@ Também está planejado um modo prova: 3 horas, tarefas de todos os domínios e 
 - **Desligando o que ninguém usa:** remoção completa de um operator (subscription e CSV).
 
 A instalação de operators pelo console web não é simulada; o jogo cobre o caminho pela CLI.
+
+**Capítulo 8 — Segurança de aplicações**
+
+- **O legado que exige root:** service account própria com a SCC `anyuid` e `oc set serviceaccount`.
+- **Ninguém aqui precisa de root:** pod recusado por todas as SCCs e `oc adm policy scc-subject-review`.
+- **Quem vigia os pods:** aplicação que lê a API do cluster com uma service account e o papel `view` em dois projetos.
+- **A conciliação da madrugada:** cron job com agenda, histórico e concorrência, e um job disparado a partir dele.
 
 ## Usuários do laboratório
 

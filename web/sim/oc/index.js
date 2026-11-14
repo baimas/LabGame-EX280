@@ -19,6 +19,7 @@ import { autentica, pode, grupos } from '../rbac.js';
 import { comUsuario, exige } from '../autoriza.js';
 import { GERADORES_RBAC, authCmd, admIdentidade } from './identidade.js';
 import { criaProjeto, configProjetos, templateInicial } from '../projetos.js';
+import { jobDoCron } from '../jobs.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
 
@@ -468,6 +469,25 @@ GERADORES.quota = (ctx, pos, f) => {
   return { kind: 'ResourceQuota', metadata: { name: pos[0] }, spec };
 };
 GERADORES.resourcequota = GERADORES.quota;
+GERADORES.job = (ctx, pos, f, resto) => {
+  const nome = pos[0];
+  if (f.has('from')) {
+    const [tipo, origem] = String(f.one('from')).split('/');
+    if (!/^(cronjob|cronjobs|cj)(\.batch)?$/.test(tipo) || !origem) throw erro(`error: from must be an existing cronjob: ${f.one('from')}`);
+    return jobDoCron(ctx.env.cluster.must('CronJob', origem, nsDe(ctx, f)), nome, true);
+  }
+  if (!f.has('image')) throw erro('error: required flag(s) "image" not set');
+  const ct = { name: nome, image: f.one('image'), ...(resto?.length ? { command: resto } : {}), resources: {} };
+  return { kind: 'Job', metadata: { name: nome }, spec: { template: { spec: { containers: [ct], restartPolicy: 'Never' } } } };
+};
+GERADORES.cronjob = (ctx, pos, f, resto) => {
+  const nome = pos[0];
+  if (!f.has('image')) throw erro('error: required flag(s) "image" not set');
+  if (!f.has('schedule')) throw erro('error: required flag(s) "schedule" not set');
+  const ct = { name: nome, image: f.one('image'), ...(resto?.length ? { command: resto } : {}), resources: {} };
+  return { kind: 'CronJob', metadata: { name: nome }, spec: { schedule: String(f.one('schedule')), jobTemplate: { metadata: { name: nome }, spec: { template: { spec: { containers: [ct], restartPolicy: f.one('restart') || 'OnFailure' } } } } } };
+};
+GERADORES.cj = GERADORES.cronjob;
 GERADORES.clusterresourcequota = (ctx, pos, f) => {
   const rot = pares(f.all('project-label-selector'), 'label selector');
   const anot = pares(f.all('project-annotation-selector'), 'annotation selector');
@@ -864,8 +884,18 @@ function set(ctx) {
   if (sub === 'volumes') sub = 'volume';
   if (sub === 'data') return setData(ctx, resto);
   if (!sub) return ok(ajuda(['set']));
+  if (sub === 'serviceaccount' || sub === 'sa') {
+    const { k, nome, resto: itens } = umAlvo(pos, 'set');
+    const conta = itens[0];
+    if (!conta) throw erro('error: serviceaccount is required');
+    mudaTemplate(ctx, 'serviceaccount', k, nome, ns, (spec) => {
+      spec.serviceAccountName = conta;
+      delete spec.serviceAccount;
+    });
+    return ok(`${k.out}/${nome} serviceaccount updated\n`);
+  }
   if (!['env', 'image', 'resources', 'volume'].includes(sub)) {
-    if (['build-hook', 'build-secret', 'data', 'deployment-hook', 'image-lookup', 'probe', 'route-backends', 'selector', 'serviceaccount', 'subject', 'triggers'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub}`);
+    if (['build-hook', 'build-secret', 'data', 'deployment-hook', 'image-lookup', 'probe', 'route-backends', 'selector', 'subject', 'triggers'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub}`);
     throw desconhecido(sub, 'set');
   }
   const { k, nome, resto: itens } = umAlvo(pos, 'set');
@@ -1520,6 +1550,7 @@ const SUBS = {
   get, describe, apply, create, delete: del, 'new-project': newProject, project, projects, login, whoami,
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
   patch, edit, rollout, logs, process, replace, auth: authCmd, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
+  policy: (ctx) => admIdentidade(ctx, 'policy', ctx.args),
   'cluster-info': () => ok(`Kubernetes control plane is running at ${SERVER}\n\nTo further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.\n`),
   events: (ctx) => get({ ...ctx, args: ['events', ...ctx.args] }),
   logout: (ctx) => {

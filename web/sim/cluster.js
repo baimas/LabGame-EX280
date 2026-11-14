@@ -3,6 +3,7 @@
 import { clone, uuid, b64 } from './util.js';
 import { kindOf, kindDoObjeto } from './resources.js';
 import { admite, padroesLimitRange } from './quota.js';
+import { cron } from './jobs.js';
 import { reconcile } from './controllers.js';
 import { seed } from './seed.js';
 import { umCert, umaChave } from './tls.js';
@@ -204,6 +205,14 @@ export class Cluster {
       }
       conteineres(o.spec.template?.spec, 'spec.template.spec');
     }
+    if (o.kind === 'Job' || o.kind === 'CronJob') {
+      const tpl = o.kind === 'Job' ? o.spec?.template : o.spec?.jobTemplate?.spec?.template;
+      const caminho = o.kind === 'Job' ? 'spec.template' : 'spec.jobTemplate.spec.template';
+      conteineres(tpl?.spec, `${caminho}.spec`);
+      const rp = tpl.spec.restartPolicy;
+      if (!['OnFailure', 'Never'].includes(rp)) throw invalido(o, `${caminho}.spec.restartPolicy: ${rp ? `Unsupported value: "${rp}"` : 'Required value'}: supported values: "OnFailure", "Never"`);
+    }
+    if (o.kind === 'CronJob' && !cron(o.spec?.schedule || '')) throw invalido(o, `spec.schedule: Invalid value: "${o.spec?.schedule ?? ''}": ${o.spec?.schedule ? 'invalid schedule format' : 'Required value'}`);
     if (o.kind === 'Service' && o.spec?.type !== 'ExternalName' && !o.spec?.ports?.length) throw invalido(o, 'spec.ports: Required value');
     if (o.kind === 'Route' && !o.spec?.to?.name) throw invalido(o, 'spec.to.name: Required value');
     if (o.kind === 'Route' && o.spec.tls?.termination === 'passthrough' && (o.spec.tls.certificate || o.spec.tls.key)) throw invalido(o, 'spec.tls.certificate: Invalid value: "redacted certificate data": passthrough termination does not support certificates');
@@ -258,6 +267,14 @@ export class Cluster {
       o.status = { ingress: [{ host: o.spec.host, routerName: 'default', conditions: [problema ? { type: 'Admitted', status: 'False', reason: 'ExtendedValidationFailed', message: problema } : { type: 'Admitted', status: 'True' }] }] };
     }
     if (o.kind === 'LimitRange') padroesLimitRange(o);
+    if (o.kind === 'Job') {
+      Object.assign(o.spec, { completions: o.spec.completions ?? 1, parallelism: o.spec.parallelism ?? 1, backoffLimit: o.spec.backoffLimit ?? 6 });
+      o.status ??= {};
+    }
+    if (o.kind === 'CronJob') {
+      o.spec = { concurrencyPolicy: 'Allow', suspend: false, successfulJobsHistoryLimit: 3, failedJobsHistoryLimit: 1, ...o.spec };
+      o.status ??= {};
+    }
     if (o.kind === 'Secret') {
       o.type ??= 'Opaque';
       if (o.stringData) {

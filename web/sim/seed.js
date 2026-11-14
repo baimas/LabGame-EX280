@@ -3,6 +3,7 @@ import { TEMPLATES } from './catalogo.js';
 import { objetosIniciais, hashSenha } from './rbac.js';
 import { kindDoObjeto } from './resources.js';
 import { objetosCatalogo } from './olm.js';
+import { objetosScc } from './scc.js';
 
 export const VERSAO = '4.18.6';
 export const KUBE = 'v1.31.6';
@@ -62,6 +63,7 @@ function objetosBase() {
     { apiVersion: 'config.openshift.io/v1', kind: 'Project', metadata: { name: 'cluster' }, spec: {} },
     // Catálogo de operators e o operator group global de openshift-operators.
     ...objetosCatalogo(),
+    ...objetosScc(),
     { kind: 'OperatorGroup', metadata: { name: 'global-operators', namespace: 'openshift-operators' }, spec: {} },
   ];
 }
