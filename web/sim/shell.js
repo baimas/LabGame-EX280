@@ -8,7 +8,20 @@ import { curl } from './curl.js';
 import { helm } from './helm.js';
 import { htpasswd } from './rbac.js';
 import { openssl } from './tls.js';
-import { nc, mysql } from './tcp.js';
+import { nc, mysql, psql } from './tcp.js';
+import { contextoUtility } from './pod.js';
+
+// `ssh utility`: abre uma sessão no host utility do laboratório.
+async function ssh({ args, sh, env }) {
+  const pos = args.filter((a) => !a.startsWith('-'));
+  const host = (pos[0] || '').split('@').pop();
+  if (!['utility', 'utility.lab.example.com'].includes(host)) return { err: `ssh: Could not resolve hostname ${host || '(none)'}: Name or service not known\n`, code: 255 };
+  if (sh.pod) return { err: 'ssh: nested sessions are not simulated\n', code: 255 };
+  // `ssh utility COMANDO` roda o comando no host e volta.
+  if (pos.length > 1) return sh.noPod(contextoUtility(env), () => sh.run(pos.slice(1).join(' '), { sub: true }));
+  sh.entraPod(contextoUtility(env));
+  return { out: 'Register this system with Red Hat Insights: rhc connect\nLast login: from 172.25.250.9\n', code: 0 };
+}
 
 const OPS = ['2>&1', '&&', '||', '>>', '2>', '|', ';', '>', '<'];
 const MARCA = '\u0001';
@@ -58,13 +71,14 @@ export class Shell {
     this.cwd = HOME;
     this.vars = { HOME, USER: 'student', HOSTNAME: 'workstation', '?': '0' };
     this.history = [];
-    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl, helm, htpasswd, openssl, nc, ncat: nc, mysql };
+    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl, helm, htpasswd, openssl, nc, ncat: nc, mysql, mariadb: mysql, psql, ssh };
     this.pod = null; // contexto do contêiner quando se está dentro de `oc rsh`
     this.salvo = null;
   }
 
   // Entra no shell de um contêiner; `exit` volta para a estação de trabalho.
   entraPod(contexto) {
+    this.salvoHost = Boolean(contexto.hostExterno);
     this.salvo = { cwd: this.cwd, vars: this.vars, cmds: this.cmds };
     this.pod = contexto;
     this.cwd = contexto.cwd;
@@ -79,6 +93,11 @@ export class Shell {
     this.pod = null;
     this.salvo = null;
     this.vars['?'] = String(code);
+    if (this.salvoHost) {
+      this.salvoHost = false;
+      this.env.write?.('logout\nConnection to utility closed.\n');
+      return;
+    }
     this.env.write?.(code ? `exit\ncommand terminated with exit code ${code}\n` : 'exit\n');
   }
 
@@ -112,7 +131,7 @@ export class Shell {
 
   // Se o pod sumiu ou parou, a sessão remota cai.
   verificaPod() {
-    if (!this.pod || this.pod.naoInterativo) return null;
+    if (!this.pod || this.pod.naoInterativo || this.pod.hostExterno) return null;
     const p = this.env.cluster.get('Pod', this.pod.nome, this.pod.ns);
     const vivo = p && p.metadata.uid === this.pod.pod.metadata.uid && p.status.containerStatuses?.find((x) => x.name === this.pod.container)?.state.running;
     if (vivo) return null;
@@ -123,6 +142,7 @@ export class Shell {
   }
 
   prompt() {
+    if (this.pod?.prompt) return this.pod.prompt;
     if (this.pod) return `${this.pod.shell}-5.1$ `;
     const dir = this.cwd === HOME ? '~' : this.cwd.split('/').pop() || '/';
     return `[student@workstation ${dir}]$ `;

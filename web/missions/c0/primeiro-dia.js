@@ -18,13 +18,13 @@ export default {
       'Crie o projeto `portal-dev` com o nome de exibição `Portal Dev`.',
       `No projeto, crie o deployment \`portal\` com a imagem \`${IMG}\` e 2 réplicas.`,
       'Crie o service `portal` expondo a porta 8080 do deployment.',
-      'Crie a route `portal` com o host `portal.apps.ocp4.example.com`.',
+      'Crie a route `portal` com o host `portal.apps.lab.example.com`.',
     ],
     en: [
       'Create the `portal-dev` project with the display name `Portal Dev`.',
       `In that project, create the \`portal\` deployment from the \`${IMG}\` image with 2 replicas.`,
       'Create the `portal` service exposing port 8080 of the deployment.',
-      'Create the `portal` route with the `portal.apps.ocp4.example.com` host.',
+      'Create the `portal` route with the `portal.apps.lab.example.com` host.',
     ],
   },
   hints: [
@@ -56,7 +56,7 @@ export default {
       text: { pt: 'A route portal usa o host pedido e aponta para o service', en: 'The portal route uses the requested host and targets the service' },
       test: (w) => {
         const r = w.get('Route', 'portal', 'portal-dev');
-        return r.spec.host === 'portal.apps.ocp4.example.com' && r.spec.to.name === 'portal';
+        return r.spec.host === 'portal.apps.lab.example.com' && r.spec.to.name === 'portal';
       },
     },
   ],
@@ -64,7 +64,7 @@ export default {
     { cmd: 'oc new-project portal-dev --display-name "Portal Dev"', pt: 'Cria o projeto e já passa a usá-lo.', en: 'Creates the project and switches to it.' },
     { cmd: `oc create deployment portal --image ${IMG} --replicas 2`, pt: 'Cria o deployment direto pela linha de comando.', en: 'Creates the deployment straight from the command line.' },
     { cmd: 'oc expose deployment portal --port 8080', pt: 'Gera um service com o mesmo seletor do deployment.', en: 'Generates a service with the same selector as the deployment.' },
-    { cmd: 'oc expose service portal --hostname portal.apps.ocp4.example.com', pt: 'Gera a route apontando para o service.', en: 'Generates the route targeting the service.' },
+    { cmd: 'oc expose service portal --hostname portal.apps.lab.example.com', pt: 'Gera a route apontando para o service.', en: 'Generates the route targeting the service.' },
     { cmd: 'oc rollout status deployment/portal', pt: 'Confirma que as réplicas subiram antes de dar a tarefa por encerrada.', en: 'Confirms the replicas are up before calling the task done.' },
   ],
 };

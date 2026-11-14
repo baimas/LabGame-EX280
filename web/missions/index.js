@@ -29,6 +29,8 @@ import loadbalancer from './c5/loadbalancer.js';
 import metallb from './c5/metallb.js';
 import nodeport from './c5/nodeport.js';
 import troubleshootLb from './c5/troubleshoot.js';
+import udnMissao from './c5/udn.js';
+import nadMissao from './c5/nad.js';
 import quotaMissao from './c6/quota.js';
 import limitrange from './c6/limitrange.js';
 import clusterquota from './c6/clusterquota.js';
@@ -59,7 +61,7 @@ export const CHAPTERS = [
   { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [replicasets, servicos, rollback, templates, templateProprio, helmInstall, helmUpgrade] },
   { id: 'c3', title: { pt: 'Identidade', en: 'Identity' }, domain: { pt: 'HTPasswd, usuários, grupos e RBAC', en: 'HTPasswd, users, groups, and RBAC' }, missions: [htpasswdMissao, usuarios, gruposMissao, papelProprio, kubeadmin] },
   { id: 'c4', title: { pt: 'Segurança de rede', en: 'Network security' }, domain: { pt: 'Routes, TLS e network policies', en: 'Routes, TLS, and network policies' }, missions: [edge, passthrough, serviceCa, netpolIsola, netpolConserto] },
-  { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer e acesso externo', en: 'LoadBalancer and external access' }, missions: [loadbalancer, metallb, nodeport, troubleshootLb] },
+  { id: 'c5', title: { pt: 'Além do HTTP', en: 'Beyond HTTP' }, domain: { pt: 'LoadBalancer, acesso externo e redes adicionais', en: 'LoadBalancer, external access, and additional networks' }, missions: [loadbalancer, metallb, nodeport, troubleshootLb, udnMissao, nadMissao] },
   { id: 'c6', title: { pt: 'Autosserviço', en: 'Self-service' }, domain: { pt: 'Quotas, limit ranges e project template', en: 'Quotas, limit ranges, and project template' }, missions: [quotaMissao, limitrange, clusterquota, templateProjeto, selfProvisioner] },
   { id: 'c7', title: { pt: 'Operators', en: 'Operators' }, domain: { pt: 'Instalar e remover operators', en: 'Install and remove operators' }, missions: [instalarOp, manualOp, travadoOp, removerOp] },
   { id: 'c8', title: { pt: 'Segurança de aplicações', en: 'Application security' }, domain: { pt: 'Service accounts, SCC, jobs e cron jobs', en: 'Service accounts, SCCs, jobs, and cron jobs' }, missions: [anyuid, privilegiado, sccDiagnostico, apiAcesso, jobMissao, cronjobMissao] },

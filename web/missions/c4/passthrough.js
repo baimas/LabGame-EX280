@@ -3,7 +3,7 @@ import { verifica, umCert } from '../../sim/tls.js';
 import { caDeTreinamento, certificadoPara, TRAINING_CA, b64, CERTS } from './comum.js';
 
 const NS = 'vault';
-const HOST = 'vault.apps.ocp4.example.com';
+const HOST = 'vault.apps.lab.example.com';
 
 const ct = (w) => w.get('Deployment', 'vault', NS).spec.template.spec.containers[0];
 

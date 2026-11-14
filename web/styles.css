@@ -132,3 +132,9 @@ code { font-family: var(--mono); font-size: .92em; background: #0b0f14; border: 
 .dominios b { text-align: right; font-family: var(--mono); font-size: 12px; }
 .barra-dominio { height: 6px; border-radius: 3px; background: rgba(127, 127, 127, 0.25); overflow: hidden; }
 .barra-dominio span { display: block; height: 100%; background: var(--ok); }
+
+/* Dica de documentação oficial */
+.docs { margin: 10px 0 4px; padding: 8px 12px; border: 1px solid rgba(127, 127, 127, 0.3); border-radius: 6px; }
+.docs summary { cursor: pointer; font-weight: 600; }
+.docs p { margin: 6px 0; }
+.docs a { color: inherit; text-decoration: underline; }

@@ -8,8 +8,8 @@ import { reconcile } from './controllers.js';
 import { seed } from './seed.js';
 import { umCert, umaChave } from './tls.js';
 
-export const SERVER = 'https://api.ocp4.example.com:6443';
-export const APPS_DOMAIN = 'apps.ocp4.example.com';
+export const SERVER = 'https://api.lab.example.com:6443';
+export const APPS_DOMAIN = 'apps.lab.example.com';
 
 export class ApiError extends Error {
   constructor(message, reason = 'Error') {
@@ -108,6 +108,12 @@ export class Cluster {
     if (!atual) throw doServidor('NotFound', `${k.resource} "${o.metadata.name}" not found`);
     this.validar(o);
     this.padroes(o);
+    if (o.kind === 'Namespace') {
+      const rotulo = 'k8s.ovn.org/primary-user-defined-network';
+      const tinha = Object.prototype.hasOwnProperty.call(atual.metadata.labels || {}, rotulo);
+      const tem = Object.prototype.hasOwnProperty.call(o.metadata.labels || {}, rotulo);
+      if (tinha !== tem) throw new ApiError(`Error from server (Forbidden): namespaces "${o.metadata.name}" is forbidden: ValidatingAdmissionPolicy 'user-defined-networks-namespace-label' with binding 'user-defined-networks-namespace-label-binding' denied request: The '${rotulo}' label cannot be added/removed after the namespace was created`, 'Forbidden');
+    }
     if (o.kind === 'Job' && JSON.stringify(o.spec.template) !== JSON.stringify(atual.spec.template)) {
       throw invalido(o, 'spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable');
     }
@@ -274,6 +280,14 @@ export class Cluster {
       o.status = { ingress: [{ host: o.spec.host, routerName: 'default', conditions: [problema ? { type: 'Admitted', status: 'False', reason: 'ExtendedValidationFailed', message: problema } : { type: 'Admitted', status: 'True' }] }] };
     }
     if (o.kind === 'LimitRange') padroesLimitRange(o);
+    if (o.kind === 'PersistentVolumeClaim') {
+      // Provisionamento dinâmico: o claim já nasce ligado a um volume.
+      o.spec ??= {};
+      o.spec.storageClassName ??= 'lvms-vg1';
+      o.spec.volumeMode ??= 'Filesystem';
+      o.spec.volumeName ??= `pvc-${(o.metadata.uid || uuid(`${o.metadata.namespace}/${o.metadata.name}`)).slice(0, 36)}`;
+      o.status = { phase: 'Bound', accessModes: o.spec.accessModes || ['ReadWriteOnce'], capacity: { storage: o.spec.resources?.requests?.storage || '1Gi' } };
+    }
     if (o.kind === 'Job') {
       Object.assign(o.spec, { completions: o.spec.completions ?? 1, parallelism: o.spec.parallelism ?? 1, backoffLimit: o.spec.backoffLimit ?? 6 });
       o.status ??= {};

@@ -74,37 +74,37 @@ test('oc exec repassa o código de saída', async () => {
 
 test('curl e network policies', async () => {
   const w = await mundo();
-  await w.sh('oc expose service web --hostname web.apps.ocp4.example.com');
-  let r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://web.apps.ocp4.example.com');
+  await w.sh('oc expose service web --hostname web.apps.lab.example.com');
+  let r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://web.apps.lab.example.com');
   assert.equal(r.out, '200');
   r = await w.sh('oc exec -n outro deploy/cliente -- curl -s web.loja:8080');
   assert.match(r.out, /Nimbus Portal/);
   w.cluster.create({ kind: 'NetworkPolicy', metadata: { name: 'fecha', namespace: 'loja' }, spec: { podSelector: {}, ingress: [{ from: [{ podSelector: {} }] }] } });
   r = await w.sh('oc exec -n outro deploy/cliente -- curl -s -m 2 web.loja:8080');
   assert.equal(r.code, 28);
-  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://web.apps.ocp4.example.com');
+  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://web.apps.lab.example.com');
   assert.equal(r.out, '503');
   w.cluster.create({ kind: 'NetworkPolicy', metadata: { name: 'roteador', namespace: 'loja' }, spec: { podSelector: {}, ingress: [{ from: [{ namespaceSelector: { matchLabels: { 'policy-group.network.openshift.io/ingress': '' } } }] }] } });
-  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://web.apps.ocp4.example.com');
+  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://web.apps.lab.example.com');
   assert.equal(r.out, '200');
 });
 
 test('routes TLS', async () => {
   const w = await mundo();
-  await w.sh('oc create route edge seguro --service web --hostname seguro.apps.ocp4.example.com');
-  let r = await w.sh('curl -s https://seguro.apps.ocp4.example.com');
+  await w.sh('oc create route edge seguro --service web --hostname seguro.apps.lab.example.com');
+  let r = await w.sh('curl -s https://seguro.apps.lab.example.com');
   assert.match(r.out, /Nimbus Portal/);
-  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://seguro.apps.ocp4.example.com');
+  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://seguro.apps.lab.example.com');
   assert.equal(r.out, '503');
   await w.sh('oc patch route seguro -p \'{"spec":{"tls":{"insecureEdgeTerminationPolicy":"Redirect"}}}\'');
-  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://seguro.apps.ocp4.example.com');
+  r = await w.sh('curl -s -o /dev/null -w "%{http_code}" http://seguro.apps.lab.example.com');
   assert.equal(r.out, '302');
 });
 
 test('rollout pause e resume', async () => {
   const w = await mundo();
   await w.sh('oc rollout pause deploy/web');
-  await w.sh('oc set image deploy/web web=registry.ocp4.example.com:8443/nimbus/portal:2.0');
+  await w.sh('oc set image deploy/web web=registry.lab.example.com:8443/nimbus/portal:2.0');
   w.cluster.tick(10);
   assert.equal(w.list('ReplicaSet', 'loja').filter((r) => r.metadata.name.startsWith('web-')).length, 1);
   await w.sh('oc rollout resume deploy/web');
@@ -116,7 +116,7 @@ test('oc login pergunta usuário e senha', async () => {
   const w = await mundo();
   const respostas = ['developer', 'developer'];
   w.env.ask = async () => respostas.shift();
-  const r = await w.sh('oc login https://api.ocp4.example.com:6443');
+  const r = await w.sh('oc login https://api.lab.example.com:6443');
   assert.match(r.out, /Login successful/);
   assert.equal(w.env.session.user, 'developer');
 });

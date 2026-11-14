@@ -1,7 +1,7 @@
 import { deployment } from '../../engine/world.js';
 
 const NS = 'shop';
-const HOST = 'catalog-shop.apps.ocp4.example.com';
+const HOST = 'catalog-shop.apps.lab.example.com';
 
 export default {
   id: 'c2-services',

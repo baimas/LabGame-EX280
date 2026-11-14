@@ -179,6 +179,16 @@ const IDP = lista('identityProviders is an ordered list of ways for a user to id
   name: str('name is used to qualify the identities returned by this provider.'),
   type: str('type identifies the identity provider type for this entry.'),
 });
+const REDE_UDN = (d) => obj(d, {
+  layer2: obj('Layer2 is the Layer2 topology configuration.', { ipam: obj('IPAM section contains IPAM-related configuration for the network.', { lifecycle: str('Lifecycle controls IP addresses management lifecycle. The only allowed value is Persistent.'), mode: str('Mode controls how much of the IP configuration will be managed by OVN. Enabled or Disabled.') }), role: str('Role describes the network role in the pod. Allowed values are "Primary" and "Secondary".', req), subnets: strs('Subnets are used for the pod network across the cluster. Dual-stack clusters may set 2 subnets (one for each IP family).') }),
+  layer3: obj('Layer3 is the Layer3 topology configuration.', { role: str('Role describes the network role in the pod.', req), subnets: lista('Subnets are used for the pod network across the cluster.', { cidr: str('CIDR specifies L3Subnet, which is split into smaller subnets for every node.', req), hostSubnet: int('HostSubnet specifies the subnet size for every node.') }, req) }),
+  topology: str('Topology describes network configuration. Allowed values are "Layer3", "Layer2".', req),
+});
+Object.assign(ESQUEMAS, {
+  UserDefinedNetwork: base('UserDefinedNetwork describe network request for a Namespace.', { spec: REDE_UDN('UserDefinedNetworkSpec defines the desired state of UserDefinedNetwork.'), status: obj('UserDefinedNetworkStatus contains the observed status of the UserDefinedNetwork.', { conditions: lista('', { message: str(''), reason: str(''), status: str(''), type: str('') }) }) }),
+  ClusterUserDefinedNetwork: base('ClusterUserDefinedNetwork describe network request for a shared network across namespaces.', { spec: obj('ClusterUserDefinedNetworkSpec defines the desired state of ClusterUserDefinedNetwork.', { namespaceSelector: LABEL_SELECTOR('NamespaceSelector Label selector for which namespace network should be available for.'), network: REDE_UDN('Network is the user-defined-network spec') }, req) }),
+  NetworkAttachmentDefinition: base('NetworkAttachmentDefinition is a CRD schema specified by the Network Plumbing Working Group to express the intent for attaching pods to one or more logical or physical networks.', { spec: obj('NetworkAttachmentDefinition spec defines the desired state of a network attachment', { config: str('NetworkAttachmentDefinition config is a JSON-formatted CNI configuration, for example {"cniVersion": "0.3.1", "name": "example", "type": "host-device", "device": "ens4", "ipam": {"type": "static", "addresses": [{"address": "192.168.X.X/24"}]}}') }) }),
+});
 Object.assign(ESQUEMAS, {
   OAuth: base('OAuth holds cluster-wide information about OAuth. The canonical name is `cluster`.', { spec: obj('spec holds user settable values for configuration', { identityProviders: IDP, tokenConfig: obj('tokenConfig contains options for authorization and access tokens', { accessTokenMaxAgeSeconds: int('accessTokenMaxAgeSeconds defines the maximum age of access tokens') }) }, req) }),
   Group: base('Group represents a referenceable set of Users', { users: strs('Users is the list of users in this group.') }),

@@ -3,7 +3,7 @@ import { requisicao } from '../../sim/net.js';
 import { deDentro } from './comum.js';
 
 const NS = 'catalogo';
-const HOST = 'catalogo.apps.ocp4.example.com';
+const HOST = 'catalogo.apps.lab.example.com';
 
 const acessa = (w, ns, app, alvo) => requisicao(w.cluster, deDentro(w, ns, app), { host: alvo, porta: 8080, caminho: '/', https: false }).status === 200;
 

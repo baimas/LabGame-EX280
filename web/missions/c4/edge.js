@@ -3,7 +3,7 @@ import { umCert, umaChave, verifica } from '../../sim/tls.js';
 import { CERTS, caDeTreinamento, TRAINING_CA } from './comum.js';
 
 const NS = 'payments';
-const HOST = 'payments.apps.ocp4.example.com';
+const HOST = 'payments.apps.lab.example.com';
 
 const arquivo = (w, n) => (w.fs.isFile(`${CERTS}/${n}`) ? w.fs.read(`${CERTS}/${n}`) : '');
 

@@ -7,7 +7,7 @@ import { findImage } from './images.js';
 import { b64, hashNum } from './util.js';
 import { DNS_IP, KUBE_IP } from './net.js';
 import { KUBE_CA, SERVICE_CA, openssl } from './tls.js';
-import { nc, mysql } from './tcp.js';
+import { nc, mysql, psql } from './tcp.js';
 import { uidDoProjeto, uidEfetivo } from './scc.js';
 
 const WORKDIR = '/opt/app-root/src';
@@ -98,7 +98,7 @@ function comandos(contexto) {
   const { pod, ct, env } = contexto;
   const uid = uidEfetivo(pod, ct);
   const img = findImage(ct.image);
-  const processo = ct.command?.[0]?.split('/').pop() || (img.image?.repo.includes('mysql') ? 'mysqld' : img.image?.repo.includes('postgres') ? 'postgres' : img.image?.repo.includes('httpd') ? 'httpd' : img.image?.repo.includes('nginx') ? 'nginx' : 'run-app');
+  const processo = ct.command?.[0]?.split('/').pop() || (img.image?.repo.includes('mariadb') ? 'mariadbd' : img.image?.repo.includes('mysql') ? 'mysqld' : img.image?.repo.includes('postgres') ? 'postgres' : img.image?.repo.includes('httpd') ? 'httpd' : img.image?.repo.includes('nginx') ? 'nginx' : 'run-app');
   const permitidos = ['echo', 'printf', 'cat', 'pwd', 'cd', 'ls', 'mkdir', 'touch', 'rm', 'cp', 'mv', 'grep', 'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'awk', 'sed', 'base64', 'export', 'true', 'false', 'sleep', 'date', 'clear'];
   const cmds = Object.fromEntries(permitidos.map((n) => [n, builtins[n]]));
   const sair = ({ args, sh }) => {
@@ -120,6 +120,8 @@ function comandos(contexto) {
     openssl,
     nc,
     mysql,
+    mariadb: mysql,
+    psql,
     exit: sair,
     logout: sair,
     sh: async (ctx) => shellAninhado(ctx),
@@ -165,5 +167,41 @@ export function contextoPod(env, pod, ct, shell = 'sh') {
     cwd: WORKDIR,
   };
   contexto.cmds = comandos(contexto);
+  return contexto;
+}
+
+// Host `utility` do laboratório, na rede de servidores (172.25.150.0/24), com
+// clientes de rede. Entra com `ssh utility` e sai com `exit`.
+export function contextoUtility(env) {
+  const contexto = {
+    hostExterno: 'utility',
+    ip: '172.25.150.254',
+    shell: 'utility',
+    prompt: '[student@utility ~]$ ',
+    nome: 'utility',
+    env,
+    vars: { HOME: '/home/student', USER: 'student', HOSTNAME: 'utility.lab.example.com', '?': '0' },
+    cwd: '/home/student',
+  };
+  const sair = ({ args, sh }) => {
+    sh.saiPod(Number(args[0] ?? sh.vars['?'] ?? 0));
+    return ok();
+  };
+  const basicos = ['echo', 'printf', 'cat', 'pwd', 'grep', 'head', 'tail', 'wc', 'sleep', 'date', 'clear', 'export'];
+  contexto.cmds = {
+    ...Object.fromEntries(basicos.map((n) => [n, builtins[n]])),
+    hostname: () => ok('utility.lab.example.com\n'),
+    ip: ({ args }) => ok(/^a/.test(args[0] || '') ? '2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000\n    inet 172.25.250.253/24 brd 172.25.250.255 scope global noprefixroute eth0\n3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000\n    inet 172.25.150.254/24 brd 172.25.150.255 scope global noprefixroute eth1\n' : ''),
+    curl,
+    nc,
+    ncat: nc,
+    mysql,
+    mariadb: mysql,
+    psql,
+    exit: sair,
+    logout: sair,
+    oc: () => ({ err: 'bash: oc: command not found\n', code: 127 }),
+    help: () => ok(env.t('No host utility: psql, mysql, nc, curl, ip addr, hostname e comandos básicos. Digite exit para voltar à estação de trabalho.\n', 'On the utility host: psql, mysql, nc, curl, ip addr, hostname, and basic commands. Type exit to go back to the workstation.\n')),
+  };
   return contexto;
 }

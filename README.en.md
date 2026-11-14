@@ -40,6 +40,9 @@ Open http://localhost:8280 in your browser.
 3. Click **Grade** or run `lab grade` to see what passed and what is missing.
 4. Each hint costs part of the XP. The commented solution becomes available after the first
    grading, and each step can be run straight in the terminal.
+5. Open **Search the official documentation** to practice searching, as in the exam: each
+   mission points to the OpenShift 4.22 guide (with a link to the single-page version) and the
+   terms to look for with Ctrl+F. This hint costs no XP. Every term was checked in the guides.
 
 When you feel ready, take a **practice exam** at the top of the list: 3 hours, a score from
 0 to 300, and a passing mark of 210.
@@ -57,7 +60,7 @@ browser.
 | 2. Packaged applications | Templates, Helm, rollouts, services, labels | 7 missions |
 | 3. Identity | HTPasswd, users, groups, RBAC | 5 missions |
 | 4. Network security | Routes, TLS, network policies | 5 missions |
-| 5. Beyond HTTP | LoadBalancer, external access | 4 missions |
+| 5. Beyond HTTP | LoadBalancer, external access, additional networks (UDN and NAD) | 6 missions |
 | 6. Self-service | Quotas, limit ranges, project template | 5 missions |
 | 7. Operators | Install and remove operators | 4 missions |
 | 8. Application security | Service accounts, SCCs, privileged applications, jobs, cron jobs | 6 missions |
@@ -65,7 +68,7 @@ browser.
 
 ### Exam mode
 
-Two practice exams (A and B), with 17 tasks each, covering every domain on a single cluster:
+Two practice exams (A and B), with 18 tasks each, covering every domain on a single cluster:
 
 - A 3-hour countdown; when time runs out, the exam is submitted automatically.
 - No hints, no solution, and no `lab grade`: grading only happens when you submit.
@@ -126,6 +129,8 @@ take it before playing the missions it uses, or save it for the end.
 - **Addresses for the arcade:** `IPAddressPool`, `L2Advertisement`, and a fixed IP in MetalLB.
 - **A port on the node:** NodePort services, including changing the type of an existing service.
 - **The IP nobody can reach:** MetalLB troubleshooting (pool, advertisement) and a network policy for external traffic.
+- **Every customer on its own network:** a primary UserDefinedNetwork with isolation between projects.
+- **The database on the server network:** a `host-device` NetworkAttachmentDefinition with a static IP, tested from the `utility` host.
 
 **Chapter 6 — Self-service**
 
@@ -188,9 +193,25 @@ output. It does not reproduce real rollout times, infrastructure problems, or th
 console. Use it to build fluency and, if you can, complement it with practice on a real
 cluster before the exam.
 
-The simulator presents itself as OpenShift 4.18. Check the
+The simulator presents itself as OpenShift 4.22 (Kubernetes 1.35), the version of the DO280
+course and of the current exam, with the `lab.example.com` lab domain. Check the
 [official exam page](https://www.redhat.com/en/services/training/red-hat-certified-openshift-administrator-exam)
-for the current version and objectives.
+and the Red Hat portal for the version assigned to you.
+
+### What changed from 4.18 to 4.22
+
+- **Additional networks:** UserDefinedNetwork, ClusterUserDefinedNetwork, and
+  NetworkAttachmentDefinition (the "Configure Additional Pod Networks" course section).
+- **SCCs:** the new `restricted-v3` and `nested-container`, the `openshift.io/required-scc`
+  annotation, and SCC access through RBAC (`oc create role --verb use --resource scc`).
+- **MetalLB:** the documentation uses `metallb.io/address-pool` and `spec.loadBalancerIP`; the
+  old `metallb.universe.tf/` prefix is still accepted.
+- **`oc` output:** `deleted from X namespace` and the quota message `must specify ... for: CONTAINER`.
+- **Course environment:** the `mariadb-persistent` template (`rhel10/mariadb-118`), `oc debug node`,
+  and the `stable-4.22`, `eus-4.22`, and `candidate-5.0` channels.
+
+In the minor update mission (4.21 → 4.22), the deprecated APIs belong to a fictional Nimbus
+operator: what the exam tests is the mechanism (`apirequestcounts` and admin-ack).
 
 ## Project layout
 

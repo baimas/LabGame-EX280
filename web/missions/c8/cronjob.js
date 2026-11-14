@@ -1,7 +1,7 @@
 import { cron } from '../../sim/jobs.js';
 
 const NS = 'finance-batch';
-const IMG = 'registry.ocp4.example.com:8443/ubi9/ubi:9.4';
+const IMG = 'registry.lab.example.com:8443/ubi9/ubi:9.4';
 const MSG = 'faturas conciliadas';
 
 const conteiner = (o) => o?.spec?.jobTemplate?.spec?.template?.spec?.containers?.[0];

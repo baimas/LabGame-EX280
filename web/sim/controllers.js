@@ -9,12 +9,14 @@ import { projetoCtl } from './projetos.js';
 import { olmCtl } from './olm.js';
 import { jobsCtl, cronCtl } from './jobs.js';
 import { updatesCtl } from './updates.js';
+import { redesCtl, problemaDeRede, ligaRedes } from './redes.js';
 import { uidEfetivo } from './scc.js';
 import { pode } from './rbac.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
     olmCtl(c);
+    redesCtl(c);
     cronCtl(c);
     jobsCtl(c);
     deployments(c);
@@ -66,8 +68,9 @@ function metallbCtl(c) {
   c.side.anunciados = {};
   for (const svc of lbs) {
     const anot = svc.metadata.annotations || {};
-    const pedidos = (anot['metallb.universe.tf/loadBalancerIPs'] || svc.spec.loadBalancerIP || '').split(',').map((x) => x.trim()).filter(Boolean);
-    const poolPedido = anot['metallb.universe.tf/address-pool'];
+    // Aceita as anotações novas (metallb.io/*), as antigas (metallb.universe.tf/*) e spec.loadBalancerIP.
+    const pedidos = (anot['metallb.io/loadBalancerIPs'] || anot['metallb.universe.tf/loadBalancerIPs'] || svc.spec.loadBalancerIP || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const poolPedido = anot['metallb.io/address-pool'] || anot['metallb.universe.tf/address-pool'];
     const atual = svc.status?.loadBalancer?.ingress?.[0]?.ip;
     const poolDe = (ip) => pools.find((p) => enderecosDoPool(p).includes(ip));
     const valido = (ip) => {
@@ -458,6 +461,13 @@ function pods(c) {
 
     const t = c.now - st.inicio;
     const montagem = volumeAusente(c, p);
+    // Sem rede o sandbox do pod não sobe: fica em ContainerCreating.
+    const rede = problemaDeRede(c, p);
+    if (rede) {
+      uma(`rede:${rede.slice(0, 80)}`, () => c.event(p, 'Warning', 'FailedCreatePodSandBox', rede));
+      p.status = { ...p.status, phase: 'Pending', hostIP: node.status.addresses[0].address, containerStatuses: p.spec.containers.map((ct) => ({ name: ct.name, image: ct.image, ready: false, restartCount: 0, started: false, state: { waiting: { reason: 'ContainerCreating' } } })) };
+      continue;
+    }
     const politica = p.spec.restartPolicy;
     const estados = [];
     for (const ct of p.spec.containers) {
@@ -524,6 +534,7 @@ function pods(c) {
       ],
       containerStatuses: estados,
     };
+    if (p.status.podIP) ligaRedes(c, p);
   }
 }
 

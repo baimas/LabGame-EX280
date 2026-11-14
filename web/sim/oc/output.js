@@ -168,6 +168,10 @@ const COLUNAS = {
     head: ['NAME', 'LABEL SELECTOR', 'ANNOTATION SELECTOR'],
     row: (o) => [labelsText(o.spec?.selector?.labels?.matchLabels) === '<none>' ? '' : labelsText(o.spec?.selector?.labels?.matchLabels), Object.keys(o.spec?.selector?.annotations || {}).length ? `map[${Object.entries(o.spec.selector.annotations).map(([k, v]) => `${k}:${v}`).join(' ')}]` : 'map[]'],
   },
+  PersistentVolumeClaim: {
+    head: ['NAME', 'STATUS', 'VOLUME', 'CAPACITY', 'ACCESS MODES', 'STORAGECLASS', 'VOLUMEATTRIBUTESCLASS', 'AGE'],
+    row: (o, c) => [o.status?.phase || 'Pending', o.spec?.volumeName || '', o.status?.capacity?.storage || '', (o.status?.accessModes || []).map((m) => ({ ReadWriteOnce: 'RWO', ReadWriteMany: 'RWX', ReadOnlyMany: 'ROX', ReadWriteOncePod: 'RWOP' })[m] || m).join(','), o.spec?.storageClassName || '', '<unset>', idade(o, c)],
+  },
   ConfigMap: { head: ['NAME', 'DATA', 'AGE'], row: (o, c) => [Object.keys(o.data || {}).length, idade(o, c)] },
   Secret: { head: ['NAME', 'TYPE', 'DATA', 'AGE'], row: (o, c) => [o.type, Object.keys(o.data || {}).length, idade(o, c)] },
   ServiceAccount: { head: ['NAME', 'SECRETS', 'AGE'], row: (o, c) => [1, idade(o, c)] },

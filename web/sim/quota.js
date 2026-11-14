@@ -151,11 +151,12 @@ export function admiteQuota(c, o) {
   for (const q of quotasDe(c, ns)) {
     const recursos = Object.keys(q.hard);
     if (o.kind === 'Pod') {
-      const faltando = recursos.filter((r) => /^(requests|limits)\.(cpu|memory)$|^(cpu|memory)$/.test(r)).filter((r) => {
+      const faltando = recursos.filter((r) => /^(requests|limits)\.(cpu|memory)$|^(cpu|memory)$/.test(r)).sort().map((r) => {
         const [tipo, rec] = r.includes('.') ? r.split('.') : ['requests', r];
-        return (o.spec.containers || []).some((ct) => ct.resources?.[tipo]?.[rec] === undefined);
-      });
-      if (faltando.length) throw proibido(o, `failed quota: ${q.nome}: must specify ${faltando.join(',')}`);
+        const cts = (o.spec.containers || []).filter((ct) => ct.resources?.[tipo]?.[rec] === undefined).map((ct) => ct.name);
+        return cts.length ? `${r} for: ${cts.join(',')}` : null;
+      }).filter(Boolean);
+      if (faltando.length) throw proibido(o, `failed quota: ${q.nome}: must specify ${faltando.join('; ')}`);
     }
     const pedidos = recursos.map((r) => [r, custoObjeto(c, o, r)]).filter(([, n]) => n > 0);
     const estouro = pedidos.filter(([r, n]) => q.uso(r) + n > valor(r, q.hard[r]));

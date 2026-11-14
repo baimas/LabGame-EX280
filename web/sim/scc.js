@@ -39,8 +39,22 @@ export const SCCS = [
   scc('restricted-v2', { desc: 'restricted-v2 denies access to all host features and requires pods to be run with a UID, and SELinux context that are allocated to the namespace.' }),
   scc('nonroot-v2', { desc: 'nonroot provides all features of the restricted SCC but allows users to run with any non-root UID.', campos: { runAsUser: { type: 'MustRunAsNonRoot' }, fsGroup: { type: 'RunAsAny' } } }),
   scc('hostnetwork-v2', { desc: 'hostnetwork allows using host networking and host ports but still requires pods to be run with a UID and SELinux context that are allocated to the namespace.', campos: { allowHostNetwork: true, allowHostPorts: true } }),
+  scc('restricted-v3', { desc: 'restricted-v3 denies access to all host features and requires pods to be run with a UID, and SELinux context that are allocated to the namespace, and to run in a user namespace (hostUsers: false).', campos: { userNamespaceLevel: 'RequirePodLevel' } }),
+  scc('nested-container', { desc: 'nested-container allows running nested containers inside a user namespace (hostUsers: false), for example to build images inside a pod.', campos: { userNamespaceLevel: 'RequirePodLevel', runAsUser: { type: 'RunAsAny' }, allowedCapabilities: ['SETUID', 'SETGID'] } }),
   scc('privileged', { desc: 'privileged allows access to all privileged and host features and the ability to run as any user, any group, any fsGroup, and with any SELinux context.', campos: { allowPrivilegedContainer: true, allowHostNetwork: true, allowHostPorts: true, allowHostDirVolumePlugin: true, runAsUser: { type: 'RunAsAny' }, seLinuxContext: { type: 'RunAsAny' }, fsGroup: { type: 'RunAsAny' }, requiredDropCapabilities: null, users: ['system:admin'], groups: ['system:cluster-admins', 'system:nodes', 'system:masters'], volumes: ['*'] } }),
 ];
+
+// SCCs antigas que continuam no cluster, sem uso padrão.
+const LEGADAS = [
+  ['restricted', 'restricted denies access to all host features and requires pods to be run with a UID, and SELinux context that are allocated to the namespace.', {}],
+  ['nonroot', 'nonroot provides all features of the restricted SCC but allows users to run with any non-root UID.', { runAsUser: { type: 'MustRunAsNonRoot' } }],
+  ['hostnetwork', 'hostnetwork allows using host networking and host ports but still requires pods to be run with a UID and SELinux context that are allocated to the namespace.', { allowHostNetwork: true, allowHostPorts: true }],
+  ['hostaccess', 'hostaccess allows access to all host namespaces but still requires pods to be run with a UID and SELinux context that are allocated to the namespace.', { allowHostNetwork: true, allowHostPorts: true, allowHostDirVolumePlugin: true }],
+  ['hostmount-anyuid', 'hostmount-anyuid provides all the features of the restricted SCC but allows host mounts and any UID by a pod.', { runAsUser: { type: 'RunAsAny' }, allowHostDirVolumePlugin: true }],
+  ['hostmount-anyuid-v2', 'hostmount-anyuid-v2 provides all the features of the restricted-v2 SCC but allows host mounts and any UID by a pod.', { runAsUser: { type: 'RunAsAny' }, allowHostDirVolumePlugin: true }],
+  ['node-exporter', 'node-exporter scc is used for the Prometheus node exporter', { allowHostNetwork: true, allowHostPorts: true, allowHostDirVolumePlugin: true, allowPrivilegedContainer: true, runAsUser: { type: 'RunAsAny' } }],
+];
+for (const [nome, desc, campos] of LEGADAS) SCCS.push(scc(nome, { desc, campos }));
 
 export const papelDaScc = (nome) => `system:openshift:scc:${nome}`;
 
@@ -78,6 +92,7 @@ function uidsPedidos(pod) {
 // Erros de validação do pod contra uma SCC (lista vazia = admite).
 function valida(s, pod) {
   const erros = [];
+  if (s.userNamespaceLevel === 'RequirePodLevel' && pod.spec.hostUsers !== false) erros.push('.spec.hostUsers: Invalid value: true: Host Users must be set to false');
   const base = uidDoProjeto(pod.metadata.namespace);
   if (pod.spec.hostNetwork && !s.allowHostNetwork) erros.push('.spec.securityContext.hostNetwork: Invalid value: true: Host network is not allowed to be used');
   (pod.spec.containers || []).forEach((ct, i) => {
@@ -93,7 +108,13 @@ function valida(s, pod) {
 // Escolhe a SCC para o pod e devolve {scc} ou {motivos}.
 export function escolheScc(c, pod, usuario = usuarioDaSa(pod)) {
   const motivos = [];
-  const lista = c.list('SecurityContextConstraints').sort((a, b) => (b.priority || 0) - (a.priority || 0) || ordem(a) - ordem(b));
+  let lista = c.list('SecurityContextConstraints').sort((a, b) => (b.priority || 0) - (a.priority || 0) || ordem(a) - ordem(b));
+  // `openshift.io/required-scc` fixa a SCC: só ela é avaliada.
+  const exigida = pod.metadata?.annotations?.['openshift.io/required-scc'];
+  if (exigida) {
+    lista = lista.filter((s) => s.metadata.name === exigida);
+    if (!lista.length) return { motivos: [`required scc/${exigida} not found`] };
+  }
   for (const s of lista) {
     const nome = s.metadata.name;
     if (!usavel(c, s, usuario, pod.metadata.namespace)) {

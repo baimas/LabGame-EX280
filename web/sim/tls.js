@@ -83,8 +83,8 @@ export const SERVICE_CA = caFixa('openshift-service-serving-signer@1760500000', 
 export const KUBE_CA = caFixa('kube-apiserver-lb-signer', 'kubeapiserverlbsigner', { OU: 'openshift' });
 export const TRAINING_CA = caFixa('Nimbus Training CA', 'nimbustrainingca', { C: 'BR', O: 'Nimbus Tecnologia' });
 
-export const ROUTER_CERT = emite({ subject: { CN: '*.apps.ocp4.example.com' }, san: ['DNS:*.apps.ocp4.example.com'], chaveId: 'routerdefaultkey', assinante: INGRESS_CA, dias: 730, agora: INSTALACAO });
-export const API_CERT = emite({ subject: { CN: 'api.ocp4.example.com' }, san: ['DNS:api.ocp4.example.com', 'DNS:kubernetes', 'DNS:kubernetes.default', 'DNS:kubernetes.default.svc', 'DNS:kubernetes.default.svc.cluster.local', 'IP Address:172.30.0.1'], chaveId: 'apiserverkey', assinante: KUBE_CA, dias: 730, agora: INSTALACAO });
+export const ROUTER_CERT = emite({ subject: { CN: '*.apps.lab.example.com' }, san: ['DNS:*.apps.lab.example.com'], chaveId: 'routerdefaultkey', assinante: INGRESS_CA, dias: 730, agora: INSTALACAO });
+export const API_CERT = emite({ subject: { CN: 'api.lab.example.com' }, san: ['DNS:api.lab.example.com', 'DNS:kubernetes', 'DNS:kubernetes.default', 'DNS:kubernetes.default.svc', 'DNS:kubernetes.default.svc.cluster.local', 'IP Address:172.30.0.1'], chaveId: 'apiserverkey', assinante: KUBE_CA, dias: 730, agora: INSTALACAO });
 
 // Certificado de serviço emitido pela service CA para `svc.ns.svc`.
 export function certDeServico(svc, ns, agora) {

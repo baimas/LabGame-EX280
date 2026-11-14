@@ -2,7 +2,7 @@
 // obrigatórias, logs) define o que acontece com o pod que a usa.
 import { fakeDigest } from './util.js';
 
-export const REGISTRY = 'registry.ocp4.example.com:8443';
+export const REGISTRY = 'registry.lab.example.com:8443';
 
 function img(nome, tags, extra = {}) {
   const repo = `${REGISTRY}/${nome}`;
@@ -60,7 +60,26 @@ export const IMAGES = [
     crashLog: VALIDA_MYSQL,
     logs: () => ['=> sourcing 20-validate-variables.sh ...', '=> sourcing 25-validate-replication-variables.sh ...', "[System] [MY-010931] [Server] /usr/libexec/mysqld: ready for connections. Version: '8.0.36'  port: 3306"],
   }),
+  img('rhel10/mariadb-118', ['10.1-6', 'latest=10.1-6'], {
+    proto: 'mysql',
+    port: 3306,
+    user: '27',
+    size: '160.4MB',
+    requires: [['MYSQL_ROOT_PASSWORD'], ['MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']],
+    crashLog: VALIDA_MYSQL,
+    logs: () => ['=> sourcing 20-validate-variables.sh ...', '=> sourcing 25-validate-replication-variables.sh ...', "[Note] mariadbd: ready for connections. Version: '11.8.3-MariaDB'  socket: '/var/lib/mysql/mysql.sock'  port: 3306  MariaDB Server"],
+  }),
+  img('rhel10/postgresql-18', ['10.1-4', 'latest=10.1-4'], {
+    proto: 'postgresql',
+    port: 5432,
+    user: '26',
+    size: '131.6MB',
+    requires: [['POSTGRESQL_ADMIN_PASSWORD'], ['POSTGRESQL_USER', 'POSTGRESQL_PASSWORD', 'POSTGRESQL_DATABASE']],
+    crashLog: VALIDA_PG,
+    logs: () => ['Starting server...', 'LOG:  listening on IPv4 address "0.0.0.0", port 5432', 'LOG:  database system is ready to accept connections'],
+  }),
   img('rhel9/postgresql-13', ['1-150', 'latest=1-150'], {
+    proto: 'postgresql',
     port: 5432,
     user: '26',
     size: '120.3MB',

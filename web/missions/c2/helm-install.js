@@ -3,7 +3,7 @@ import { releases } from '../../sim/helm.js';
 import { REPO_URL } from '../../sim/charts.js';
 
 const NS = 'stock';
-const HOST = 'stock.apps.ocp4.example.com';
+const HOST = 'stock.apps.lab.example.com';
 
 const release = (w) => releases(w.cluster, NS).find((r) => r.name === 'stock' && r.info.status === 'deployed');
 const dep = (w) => w.get('Deployment', 'stock-inventory', NS);
@@ -23,13 +23,13 @@ export default {
     pt: [
       `Adicione o repositório de charts \`${REPO_URL}\` com o nome \`nimbus\`.`,
       'Instale a versão `0.2.0` do chart `inventory` como a release `stock`, no projeto `stock`.',
-      'As configurações devem vir do arquivo `~/labs/stock/values.yaml`, que você deve completar: 2 réplicas, route habilitada com o host `stock.apps.ocp4.example.com` e a variável de ambiente `TZ=America/Sao_Paulo`.',
+      'As configurações devem vir do arquivo `~/labs/stock/values.yaml`, que você deve completar: 2 réplicas, route habilitada com o host `stock.apps.lab.example.com` e a variável de ambiente `TZ=America/Sao_Paulo`.',
       `Os pods devem ficar prontos e \`http://${HOST}\` deve responder.`,
     ],
     en: [
       `Add the \`${REPO_URL}\` chart repository with the \`nimbus\` name.`,
       'Install version `0.2.0` of the `inventory` chart as the `stock` release, in the `stock` project.',
-      'The settings must come from the `~/labs/stock/values.yaml` file, which you must complete: 2 replicas, route enabled with the `stock.apps.ocp4.example.com` host, and the `TZ=America/Sao_Paulo` environment variable.',
+      'The settings must come from the `~/labs/stock/values.yaml` file, which you must complete: 2 replicas, route enabled with the `stock.apps.lab.example.com` host, and the `TZ=America/Sao_Paulo` environment variable.',
       `The pods must become ready and \`http://${HOST}\` must answer.`,
     ],
   },

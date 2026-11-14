@@ -20,6 +20,7 @@ import { comUsuario, exige } from '../autoriza.js';
 import { GERADORES_RBAC, authCmd, admIdentidade } from './identidade.js';
 import { criaProjeto, configProjetos, templateInicial } from '../projetos.js';
 import { jobDoCron } from '../jobs.js';
+import { noHost } from '../no.js';
 import { resumoUpgrade, recomendadas, versaoAtual, kubeDa, imagemDa, CANAIS_DISPONIVEIS } from '../updates.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
@@ -597,7 +598,7 @@ function del(ctx) {
         c.must(r.kind, nome, n);
       }
       c.delete(r.kind, nome, n);
-      out += `${k.out} "${nome}" deleted\n`;
+      out += r.namespaced ? `${k.out} "${nome}" deleted from ${n} namespace\n` : `${k.out} "${nome}" deleted\n`;
     } catch (e) {
       if (!(e instanceof ApiError)) throw e;
       err += e.message + '\n';
@@ -654,7 +655,7 @@ async function login(ctx) {
   const servidor = f.one('server') || pos[0];
   if (servidor) {
     const host = String(servidor).replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-    if (!/^api\.ocp4\.example\.com(:6443)?$/.test(host)) return { err: `error: dial tcp: lookup ${host.split(':')[0]} on 172.25.250.254:53: no such host - verify you have provided the correct host and port and that the server is currently running.\n`, code: 1 };
+    if (!/^api\.lab\.example\.com(:6443)?$/.test(host)) return { err: `error: dial tcp: lookup ${host.split(':')[0]} on 172.25.250.254:53: no such host - verify you have provided the correct host and port and that the server is currently running.\n`, code: 1 };
   }
   let u = f.one('username');
   let p = f.one('password') ?? f.one('patch');
@@ -1462,6 +1463,31 @@ function apiResources() {
   return ok(table(linhas));
 }
 
+// `oc debug node/NOME -- chroot /host COMANDO`.
+function debug(ctx) {
+  const { pos, resto } = parseArgs(ctx.args);
+  const alvo = pos[0];
+  if (!alvo) throw erro('error: you must specify a resource, a name, or a file to debug');
+  const m = alvo.match(/^(nodes?|no)\/(.+)$/);
+  if (!m) throw naoSimulado(ctx, `oc debug ${alvo.split('/')[0]}`);
+  const real = ctx.env.clusterReal || ctx.env.cluster;
+  const usuario = ctx.env.usuario || ctx.env.session.user;
+  if (!pode(real, usuario, 'create', 'pods', '', 'default', undefined, ctx.env.gruposExtras) || !pode(real, usuario, 'get', 'nodes', '', null, undefined, ctx.env.gruposExtras)) {
+    throw erro(`Error from server (Forbidden): nodes "${m[2]}" is forbidden: User "${usuario}" cannot get resource "nodes" in API group "" at the cluster scope`);
+  }
+  const no = real.must('Node', m[2]);
+  const inicio = `Starting pod/${no.metadata.name}-debug-${rand(5)} ...\nTo use host binaries, run \`chroot /host\`. Instead, if you need to access host namespaces, run \`nsenter -a -t 1\`.\n`;
+  if (!resto?.length) throw naoSimulado(ctx, ctx.env.t('oc debug node interativo (use: oc debug node/NOME -- chroot /host COMANDO)', 'interactive oc debug node (use: oc debug node/NAME -- chroot /host COMMAND)'));
+  let cmd = resto;
+  if (cmd[0] !== 'chroot' || cmd[1] !== '/host') {
+    return { err: inicio + `sh: ${cmd[0]}: command not found\n\nRemoving debug pod ...\n`, code: 127 };
+  }
+  cmd = cmd.slice(2);
+  const linha = /^(ba)?sh$/.test(cmd[0]) && cmd[1] === '-c' ? cmd.slice(2).join(' ') : cmd.join(' ');
+  const r = noHost(real, no, linha);
+  return { out: r.out, err: inicio + (r.err || '') + '\nRemoving debug pod ...\n', code: r.code };
+}
+
 function upgrade(ctx, args) {
   const c = ctx.env.cluster;
   if (args[0] === 'channel') {
@@ -1614,6 +1640,7 @@ export const SUBS = {
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
   patch, edit, rollout, logs, process, replace, auth: authCmd, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
   policy: (ctx) => admIdentidade(ctx, 'policy', ctx.args),
+  debug,
   'cluster-info': () => ok(`Kubernetes control plane is running at ${SERVER}\n\nTo further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.\n`),
   events: (ctx) => get({ ...ctx, args: ['events', ...ctx.args] }),
   logout: (ctx) => {

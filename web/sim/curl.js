@@ -58,6 +58,7 @@ const ERROS = {
   dns: (u) => [6, `Could not resolve host: ${u.host}`],
   recusada: (u, ip) => [7, `Failed to connect to ${u.host} port ${u.porta ?? (u.https ? 443 : 80)} after 1 ms: Couldn't connect to server`],
   bloqueada: (u, ip, ms) => [28, ms ? `Connection timed out after ${ms} milliseconds` : `Failed to connect to ${u.host} port ${u.porta ?? (u.https ? 443 : 80)} after 130120 ms: Couldn't connect to server`],
+  semRota: (u) => [7, `Failed to connect to ${u.host} port ${u.porta ?? (u.https ? 443 : 80)} after 3061 ms: No route to host`],
   mysql: () => [1, 'Received HTTP/0.9 when not allowed'],
   vazia: () => [52, 'Empty reply from server'],
   'tls-versao': () => [35, 'OpenSSL/3.0.7: error:0A00010B:SSL routines::wrong version number'],
@@ -86,7 +87,7 @@ export async function curl(ctx) {
   if (erro) return { err: erro, code: 2 };
   if (!urls.length) return { err: "curl: try 'curl --help' or 'curl --manual' for more information\n", code: 2 };
   const c = ctx.env.cluster;
-  const noPod = ctx.sh.pod ? c.get('Pod', ctx.sh.pod.nome, ctx.sh.pod.ns) : null;
+  const noPod = ctx.sh.pod?.hostExterno ? ctx.sh.pod : ctx.sh.pod ? c.get('Pod', ctx.sh.pod.nome, ctx.sh.pod.ns) : null;
   let out = '';
   let err = '';
   let code = 0;

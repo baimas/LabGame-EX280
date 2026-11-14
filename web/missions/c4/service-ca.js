@@ -4,7 +4,7 @@ import { SERVICE_CA, verifica, umCert } from '../../sim/tls.js';
 import { b64, deDentro } from './comum.js';
 
 const NS = 'ledger';
-const HOST = 'ledger.apps.ocp4.example.com';
+const HOST = 'ledger.apps.lab.example.com';
 const ANOT = 'service.beta.openshift.io/serving-cert-secret-name';
 
 const spec = (w, n) => w.get('Deployment', n, NS).spec.template.spec;
@@ -80,7 +80,7 @@ export default {
     },
     {
       text: { pt: `A route reencrypt responde em https://${HOST}`, en: `The reencrypt route answers at https://${HOST}` },
-      test: (w) => w.get('Route', 'ledger-api', NS).spec.tls?.termination === 'reencrypt' && w.http(`https://${HOST}`).status === 200 && umCert(w.http(`https://${HOST}`).cert)?.subject.CN === '*.apps.ocp4.example.com',
+      test: (w) => w.get('Route', 'ledger-api', NS).spec.tls?.termination === 'reencrypt' && w.http(`https://${HOST}`).status === 200 && umCert(w.http(`https://${HOST}`).cert)?.subject.CN === '*.apps.lab.example.com',
     },
   ],
   solution: [

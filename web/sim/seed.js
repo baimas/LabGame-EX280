@@ -6,8 +6,8 @@ import { objetosCatalogo } from './olm.js';
 import { objetosScc } from './scc.js';
 import { objetosUpdates } from './updates.js';
 
-export const VERSAO = '4.18.6';
-export const KUBE = 'v1.31.6';
+export const VERSAO = '4.22.4';
+export const KUBE = 'v1.35.5';
 
 const SISTEMA = 'quay.io/openshift-release-dev/ocp-v4.0-art-dev';
 
@@ -123,14 +123,14 @@ function seedResto(c, agora) {
         { type: 'PIDPressure', status: 'False', reason: 'KubeletHasSufficientPID' },
         { type: 'Ready', status: 'True', reason: 'KubeletReady', message: 'kubelet is posting ready status' },
       ],
-      nodeInfo: { kubeletVersion: KUBE, osImage: 'Red Hat Enterprise Linux CoreOS 418.94 (Plow)', containerRuntimeVersion: 'cri-o://1.31.6', architecture: 'amd64', operatingSystem: 'linux' },
+      nodeInfo: { kubeletVersion: KUBE, osImage: 'Red Hat Enterprise Linux CoreOS', containerRuntimeVersion: 'cri-o://1.35.5', architecture: 'amd64', operatingSystem: 'linux' },
     },
   });
 
   c.create({
     kind: 'ClusterVersion',
     metadata: { name: 'version' },
-    spec: { channel: 'stable-4.18', clusterID: '6f1c2a34-0b5d-4c8e-9a7f-2d3e4b5c6a70' },
+    spec: { channel: 'stable-4.22', clusterID: '6f1c2a34-0b5d-4c8e-9a7f-2d3e4b5c6a70' },
     status: {
       desired: { version: VERSAO },
       history: [{ state: 'Completed', version: VERSAO, startedTime: c.iso(), completionTime: c.iso() }],

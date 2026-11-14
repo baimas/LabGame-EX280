@@ -14,12 +14,12 @@ export default {
   tasks: {
     pt: [
       'Antes de começar, grave em `~/upgrade/antes.txt` só a versão atual do cluster.',
-      'Atualize o cluster para a versão mais nova recomendada no canal `stable-4.18`.',
+      'Atualize o cluster para a versão mais nova recomendada no canal `stable-4.22`.',
       'Espere a atualização terminar: todos os cluster operators devem estar na versão nova.',
     ],
     en: [
       'Before starting, write only the current cluster version to `~/upgrade/antes.txt`.',
-      'Update the cluster to the newest recommended version in the `stable-4.18` channel.',
+      'Update the cluster to the newest recommended version in the `stable-4.22` channel.',
       'Wait for the update to finish: every cluster operator must be on the new version.',
     ],
   },
@@ -34,19 +34,19 @@ export default {
   checks: [
     {
       text: { pt: 'antes.txt tem a versão anterior', en: 'antes.txt holds the previous version' },
-      test: (w) => w.file('upgrade/antes.txt') === '4.18.6',
+      test: (w) => w.file('upgrade/antes.txt') === '4.22.4',
     },
     {
-      text: { pt: 'O cluster está na 4.18.12, no canal stable-4.18', en: 'The cluster is on 4.18.12, in the stable-4.18 channel' },
-      test: (w) => atualizado(w, '4.18.12') && w.get('ClusterVersion', 'version').spec.channel === 'stable-4.18',
+      text: { pt: 'O cluster está na 4.22.8, no canal stable-4.22', en: 'The cluster is on 4.22.8, in the stable-4.22 channel' },
+      test: (w) => atualizado(w, '4.22.8') && w.get('ClusterVersion', 'version').spec.channel === 'stable-4.22',
     },
   ],
   solution: [
     { cmd: "oc get clusterversion version -o jsonpath='{.status.desired.version}' > ~/upgrade/antes.txt", pt: 'Guarda a versão atual.', en: 'Saves the current version.' },
-    { cmd: 'oc adm upgrade', pt: 'Canal `stable-4.18`; recomendadas 4.18.12 e 4.18.9.', en: '`stable-4.18` channel; 4.18.12 and 4.18.9 recommended.' },
+    { cmd: 'oc adm upgrade', pt: 'Canal `stable-4.22`; recomendadas 4.22.8 e 4.22.6.', en: '`stable-4.22` channel; 4.22.8 and 4.22.6 recommended.' },
     { cmd: 'oc adm upgrade --to-latest', pt: 'Pede a mais nova.', en: 'Requests the newest one.' },
     { cmd: 'sleep 120; oc get clusterversion', pt: 'Em andamento, com a porcentagem.', en: 'In progress, with the percentage.' },
     { cmd: 'sleep 120; sleep 90', pt: 'Espera o restante.', en: 'Waits for the rest.' },
-    { cmd: 'oc get clusterversion; oc get co', pt: 'Tudo na 4.18.12.', en: 'Everything on 4.18.12.' },
+    { cmd: 'oc get clusterversion; oc get co', pt: 'Tudo na 4.22.8.', en: 'Everything on 4.22.8.' },
   ],
 };

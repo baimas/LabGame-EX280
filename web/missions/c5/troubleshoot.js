@@ -32,7 +32,7 @@ export default {
   },
   hints: [
     { pt: 'Comece por `oc describe svc` (eventos do MetalLB) e por `oc get ipaddresspools,l2advertisements -n metallb-system`.', en: 'Start with `oc describe svc` (MetalLB events) and `oc get ipaddresspools,l2advertisements -n metallb-system`.' },
-    { pt: 'Um pool com `autoAssign: false` só entrega IP a quem pede o pool pela anotação `metallb.universe.tf/address-pool`. Um IP só responde de fora se algum L2Advertisement anunciar o pool dele.', en: 'A pool with `autoAssign: false` only hands out IPs to whoever asks for it through the `metallb.universe.tf/address-pool` annotation. An IP only answers from outside if some L2Advertisement announces its pool.' },
+    { pt: 'Um pool com `autoAssign: false` só entrega IP a quem pede o pool pela anotação `metallb.universe.tf/address-pool`. Um IP só responde de fora se algum L2Advertisement anunciar o pool dele. A documentação do 4.22 usa `metallb.io/address-pool`; o prefixo antigo `metallb.universe.tf/` continua aceito.', en: 'A pool with `autoAssign: false` only hands out IPs to whoever asks for it through the `metallb.universe.tf/address-pool` annotation. An IP only answers from outside if some L2Advertisement announces its pool. The 4.22 documentation uses `metallb.io/address-pool`; the old `metallb.universe.tf/` prefix is still accepted.' },
     { pt: 'Tráfego que chega por LoadBalancer vem de fora do cluster: uma regra de ingress só com `ports` (sem `from`) libera a porta para qualquer origem.', en: 'Traffic arriving through a LoadBalancer comes from outside the cluster: an ingress rule with only `ports` (no `from`) opens the port to any source.' },
   ],
   setup(w) {

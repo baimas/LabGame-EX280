@@ -3,28 +3,34 @@
 import { fakeDigest } from './util.js';
 
 export const DURACAO = 300; // segundos simulados de uma atualização
-const GATE = 'ack-4.18-kube-1.32-api-removals-in-4.19';
-const MSG_GATE = 'Kubernetes 1.32 and therefore OpenShift 4.19 remove several APIs which require admin consideration. Please see the knowledge article https://access.redhat.com/articles/7112216 for details and instructions.';
+// Ack exigido para sair da 4.21 (Kubernetes 1.34) para a 4.22 (Kubernetes 1.35).
+// As APIs depreciadas do laboratório são de um operator fictício da Nimbus:
+// o que a prova cobra é o mecanismo, não uma lista de APIs.
+const GATE = 'ack-4.21-kube-1.35-api-removals-in-4.22';
+const MSG_GATE = 'Kubernetes 1.35 and therefore OpenShift 4.22 remove several APIs which require admin consideration. Please see the knowledge article for details and instructions.';
 
 // Versões por canal e arestas do grafo (de → para).
-const V418 = ['4.18.6', '4.18.9', '4.18.12'];
+const V421 = ['4.21.9', '4.21.12'];
+const V422 = ['4.22.4', '4.22.6', '4.22.8'];
 const CANAIS = {
-  'stable-4.18': V418,
-  'eus-4.18': V418,
-  'fast-4.18': [...V418, '4.18.14'],
-  'candidate-4.18': [...V418, '4.18.14', '4.18.15'],
-  'stable-4.19': [...V418, '4.19.3', '4.19.5'],
-  'fast-4.19': [...V418, '4.18.14', '4.19.3', '4.19.5', '4.19.6'],
-  'candidate-4.19': [...V418, '4.18.14', '4.19.3', '4.19.5', '4.19.6'],
+  'stable-4.21': V421,
+  'fast-4.21': [...V421, '4.21.14'],
+  'candidate-4.21': [...V421, '4.21.14'],
+  'stable-4.22': [...V421, ...V422],
+  'eus-4.22': [...V421, ...V422],
+  'fast-4.22': [...V421, '4.21.14', ...V422, '4.22.9'],
+  'candidate-4.22': [...V421, '4.21.14', ...V422, '4.22.9', '4.22.10'],
+  'candidate-5.0': [...V422, '4.22.9', '4.22.10'],
 };
 const ARESTAS = [
-  ['4.18.6', '4.18.9'], ['4.18.6', '4.18.12'], ['4.18.9', '4.18.12'], ['4.18.6', '4.18.14'], ['4.18.9', '4.18.14'], ['4.18.12', '4.18.14'], ['4.18.12', '4.18.15'], ['4.18.14', '4.18.15'],
-  ['4.18.9', '4.19.3'], ['4.18.12', '4.19.3'], ['4.18.12', '4.19.5'], ['4.18.14', '4.19.5'], ['4.19.3', '4.19.5'], ['4.19.3', '4.19.6'], ['4.19.5', '4.19.6'],
+  ['4.21.9', '4.21.12'], ['4.21.9', '4.21.14'], ['4.21.12', '4.21.14'],
+  ['4.21.12', '4.22.4'], ['4.21.12', '4.22.6'], ['4.21.14', '4.22.6'],
+  ['4.22.4', '4.22.6'], ['4.22.4', '4.22.8'], ['4.22.6', '4.22.8'], ['4.22.4', '4.22.9'], ['4.22.6', '4.22.9'], ['4.22.8', '4.22.9'], ['4.22.8', '4.22.10'], ['4.22.9', '4.22.10'],
 ];
 
 export const CANAIS_DISPONIVEIS = Object.keys(CANAIS).sort();
 export const imagemDa = (v) => `quay.io/openshift-release-dev/ocp-release@${fakeDigest(`ocp-release:${v}`)}`;
-export const kubeDa = (v) => (v.startsWith('4.19') ? 'v1.32.5' : 'v1.31.6');
+export const kubeDa = (v) => (v.startsWith('4.21') ? 'v1.34.6' : 'v1.35.5');
 const menor = (v) => v.split('.').slice(0, 2).join('.');
 const compara = (a, b) => {
   const [x, y] = [a, b].map((v) => v.split('.').map(Number));
@@ -32,7 +38,7 @@ const compara = (a, b) => {
   return 0;
 };
 
-export const versaoAtual = (c) => c.get('ClusterVersion', 'version')?.status?.history?.find((h) => h.state === 'Completed')?.version || '4.18.6';
+export const versaoAtual = (c) => c.get('ClusterVersion', 'version')?.status?.history?.find((h) => h.state === 'Completed')?.version || '4.22.4';
 
 // Atualizações recomendadas a partir da versão atual, no canal configurado.
 export function recomendadas(c) {
@@ -66,7 +72,7 @@ export function updatesCtl(c) {
   const alvo = cv.spec.desiredUpdate?.version;
   const recs = recomendadas(c);
   cv.status.availableUpdates = recs.map((v) => ({ version: v, image: imagemDa(v), channels: Object.keys(CANAIS).filter((k) => CANAIS[k].includes(v)).sort() }));
-  const gate = menor(atual) === '4.18' ? bloqueio(c, '4.19.0') : null;
+  const gate = menor(atual) === '4.21' ? bloqueio(c, '4.22.0') : null;
   poe(cv, 'Upgradeable', gate ? 'False' : 'True', gate || {}, c);
 
   if (st.alvo) {
@@ -143,10 +149,10 @@ export function objetosUpdates() {
     { kind: 'Namespace', metadata: { name: 'openshift-config-managed' } },
     { kind: 'ConfigMap', metadata: { name: 'admin-acks', namespace: 'openshift-config' }, data: {} },
     { kind: 'ConfigMap', metadata: { name: 'admin-gates', namespace: 'openshift-config-managed' }, data: { [GATE]: MSG_GATE } },
-    uso('deployments.v1.apps', null, 4210, [['system:serviceaccount:kube-system:deployment-controller', 'kube-controller-manager/v1.31.6', 4210]]),
-    uso('pods.v1', null, 18233, [['system:serviceaccount:kube-system:replicaset-controller', 'kube-controller-manager/v1.31.6', 18233]]),
-    uso('flowschemas.v1beta3.flowcontrol.apiserver.k8s.io', '1.32', 288, [['system:serviceaccount:capacity-tools:flow-auditor', 'flow-auditor/2.3.1', 288]]),
-    uso('prioritylevelconfigurations.v1beta3.flowcontrol.apiserver.k8s.io', '1.32', 0, []),
-    uso('flowschemas.v1.flowcontrol.apiserver.k8s.io', null, 960, [['system:serviceaccount:openshift-apiserver:openshift-apiserver-sa', 'openshift-apiserver/v0.0.0', 960]]),
+    uso('deployments.v1.apps', null, 4210, [['system:serviceaccount:kube-system:deployment-controller', 'kube-controller-manager/v1.35.5', 4210]]),
+    uso('pods.v1', null, 18233, [['system:serviceaccount:kube-system:replicaset-controller', 'kube-controller-manager/v1.35.5', 18233]]),
+    uso('reportschedules.v1beta1.reports.nimbus.io', '1.35', 288, [['system:serviceaccount:capacity-tools:report-scheduler', 'report-scheduler/2.3.1', 288]]),
+    uso('reportarchives.v1beta1.reports.nimbus.io', '1.35', 0, []),
+    uso('reportschedules.v1.reports.nimbus.io', null, 960, [['system:serviceaccount:reports:reports-operator', 'reports-operator/3.0.0', 960]]),
   ];
 }

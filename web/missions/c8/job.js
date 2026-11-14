@@ -1,5 +1,5 @@
 const NS = 'orders-migration';
-const IMG = 'registry.ocp4.example.com:8443/ubi9/ubi:9.4';
+const IMG = 'registry.lab.example.com:8443/ubi9/ubi:9.4';
 const cond = (j, t) => (j?.status?.conditions || []).some((x) => x.type === t && x.status === 'True');
 const comando = (j) => [...(j?.spec.template.spec.containers[0].command || []), ...(j?.spec.template.spec.containers[0].args || [])].join(' ');
 

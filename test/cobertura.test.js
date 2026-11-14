@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MISSIONS, EXAMS, chapterOf } from '../web/missions/index.js';
 import { OFICIAIS, EXTRAS, OBJETIVOS_EN } from '../web/missions/objetivos.js';
+import { DOCS, GUIAS } from '../web/missions/docs-oficiais.js';
 
 const usados = new Map();
 for (const m of MISSIONS) for (const o of m.objectives) usados.set(o, [...(usados.get(o) || []), m.id]);
@@ -43,4 +44,15 @@ test('missões têm ids únicos e textos completos', () => {
     assert.equal(m.tasks.pt.length, m.tasks.en.length, `${m.id}: tarefas pt/en`);
     assert.ok(m.minutes > 0 && m.xp > 0 && m.difficulty >= 1 && m.difficulty <= 3, m.id);
   }
+});
+
+test('toda missão tem a dica de documentação oficial', () => {
+  const problemas = [];
+  for (const m of MISSIONS) {
+    const d = DOCS[m.id];
+    if (!d) problemas.push(`${m.id}: sem dica`);
+    else if (!GUIAS[d.guia] || !d.termos?.length) problemas.push(`${m.id}: guia ou termos inválidos`);
+  }
+  for (const id of Object.keys(DOCS)) if (!MISSIONS.some((m) => m.id === id)) problemas.push(`${id}: dica de missão que não existe`);
+  assert.deepEqual(problemas, []);
 });

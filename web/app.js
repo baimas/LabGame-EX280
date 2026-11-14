@@ -1,6 +1,7 @@
 // Interface do jogo: lista de missões, chamado, terminal, editor e correção.
 import { CHAPTERS, MISSIONS, EXAMS, byId, chapterOf, objective } from './missions/index.js';
 import { notaDoExame, CORTE, NOTA_MAXIMA } from './missions/exames.js';
+import { DOCS, GUIAS, linkGuia, indiceDocs, VERSAO_DOCS } from './missions/docs-oficiais.js';
 import { startMission, grade, score, level, HINT_COST } from './engine/game.js';
 import { createWorld } from './engine/world.js';
 import { progress } from './engine/progress.js';
@@ -26,6 +27,7 @@ const TEXTOS = {
     regras: ['Escolha uma missão à esquerda e clique em Iniciar: o ambiente é preparado como no `lab start`.', 'Resolva no terminal com `oc`. Tab completa comandos, tipos e nomes de recursos; `vi arquivo` abre o editor.', 'Clique em Corrigir (ou rode `lab grade`) para ver item a item o que passou.', 'Dicas custam XP. A solução comentada fica disponível depois da primeira correção.'],
     limite: 'Simulador não é cluster: ele cobre os comandos e regras que a prova cobra, e avisa quando um comando ainda não é simulado. Quando estiver confiante, faça um simulado no modo prova.',
     nota: 'Nota', xp: 'XP', de: 'de', melhor: 'melhor resultado',
+    docsTitulo: `Procurar na documentação oficial (${'4.22'})`, docsGuia: 'Guia', docsTermos: 'Procure (Ctrl+F) por', docsComo: 'Abra o guia em página única e use a busca do navegador, como na prova. A dica não custa XP.', docsProva: 'Na prova você tem a documentação do produto, sem dicas. Treine a busca no índice:',
     modoProva: 'Modo prova', provaDesc: '3 horas · todos os domínios · sem dicas', iniciarProva: 'Começar prova', entregar: 'Entregar prova', abandonar: 'Abandonar',
     confirmaEntregar: 'Entregar a prova agora? Depois disso a nota é calculada e não dá mais para mexer.', confirmaAbandonar: 'Abandonar a prova? Nada será corrigido.',
     regrasProva: ['Todas as tarefas rodam no mesmo cluster. Faça na ordem que quiser.', 'Não há dicas, solução nem `lab grade`: a correção só acontece na entrega.', 'Quando o tempo acabar, a prova é entregue sozinha.', `Nota de 0 a ${NOTA_MAXIMA}; aprovação a partir de ${CORTE}, como na EX280.`, 'As configurações precisam estar valendo no fim: o que só existe em arquivo não conta.'],
@@ -50,6 +52,7 @@ const TEXTOS = {
     regras: ['Pick a mission on the left and click Start: the environment is prepared as with `lab start`.', 'Solve it in the terminal with `oc`. Tab completes commands, resource types, and names; `vi file` opens the editor.', 'Click Grade (or run `lab grade`) to see item by item what passed.', 'Hints cost XP. The commented solution becomes available after the first grading.'],
     limite: 'A simulator is not a cluster: it covers the commands and rules the exam asks for, and tells you when a command is not simulated yet. When you feel ready, take a practice exam in exam mode.',
     nota: 'Score', xp: 'XP', de: 'of', melhor: 'best result',
+    docsTitulo: `Search the official documentation (${'4.22'})`, docsGuia: 'Guide', docsTermos: 'Search (Ctrl+F) for', docsComo: 'Open the single-page guide and use the browser search, as in the exam. This hint costs no XP.', docsProva: 'In the exam you have the product documentation, without hints. Practice searching from the index:',
     modoProva: 'Exam mode', provaDesc: '3 hours · every domain · no hints', iniciarProva: 'Start exam', entregar: 'Submit exam', abandonar: 'Abandon',
     confirmaEntregar: 'Submit the exam now? The score is calculated and nothing else can be changed.', confirmaAbandonar: 'Abandon the exam? Nothing will be graded.',
     regrasProva: ['Every task runs on the same cluster. Work in any order you like.', 'There are no hints, solution, or `lab grade`: grading only happens when you submit.', 'When time runs out, the exam is submitted automatically.', `Score from 0 to ${NOTA_MAXIMA}; passing from ${CORTE}, as in the EX280.`, 'Configuration must be in effect at the end: what only exists in a file does not count.'],
@@ -266,6 +269,10 @@ function desenhaChamado() {
   html += `<div class="meta"><span>${t.tempo}: <b>${m.minutes} ${t.min}</b></span><span>${t.dificuldade}: <b>${'●'.repeat(m.difficulty)}${'○'.repeat(3 - m.difficulty)}</b></span><span>XP: <b>${m.xp}</b></span>${p.tries ? `<span>${t.melhor}: <b>${p.xp} XP</b></span>` : ''}</div>`;
   html += `<p class="historia">${rico(m.story[L()])}</p>`;
   html += `<h3>${t.tarefas}</h3><ol class="tarefas">${m.tasks[L()].map((x) => `<li>${rico(x)}</li>`).join('')}</ol>`;
+  const doc = DOCS[m.id];
+  if (doc) {
+    html += `<details class="docs"><summary>${esc(t.docsTitulo)}</summary><p>${esc(t.docsGuia)}: <a href="${linkGuia(doc.guia)}" target="_blank" rel="noopener">${esc(GUIAS[doc.guia])}</a></p><p>${esc(t.docsTermos)}: ${doc.termos.map((x) => `<code>${esc(x)}</code>`).join(' · ')}</p><p class="nota">${esc(t.docsComo)}</p></details>`;
+  }
 
   if (emCurso) {
     html += `<div class="botoes"><button type="button" class="primario" data-acao="corrigir">${t.corrigir}</button><button type="button" data-acao="dica" ${emCurso.dicas >= m.hints.length ? 'disabled' : ''}>${t.dica} (${emCurso.dicas}/${m.hints.length})</button><button type="button" data-acao="solucao" ${emCurso.tentativas ? '' : 'disabled'} title="${emCurso.tentativas ? t.custoSolucao : t.soApos}">${t.solucao}</button><button type="button" class="fantasma" data-acao="reiniciar">${t.reiniciar}</button><button type="button" class="fantasma" data-acao="encerrar">${t.encerrar}</button><span class="nota">${t.custoDica}</span></div>`;
@@ -307,6 +314,7 @@ function desenhaProva(el, m) {
     html += `<ul>${t.regrasProva.map((r) => `<li>${rico(r)}</li>`).join('')}</ul><div class="botoes"><button type="button" class="primario" data-acao="iniciar">${t.iniciarProva}</button></div>`;
   }
   if (emCurso && !emCurso.entregue) {
+    html += `<details class="docs"><summary>${esc(t.docsTitulo)}</summary><p>${esc(t.docsProva)} <a href="${indiceDocs()}" target="_blank" rel="noopener">docs.redhat.com · OpenShift ${VERSAO_DOCS}</a></p></details>`;
     m.partes.forEach((parte, i) => {
       html += `<h3>${t.tarefa} ${i + 1} · ${esc(parte.title[L()])}</h3><p class="historia">${rico(parte.story[L()])}</p><ol class="tarefas">${parte.tasks[L()].map((x) => `<li>${rico(x)}</li>`).join('')}</ol>`;
     });

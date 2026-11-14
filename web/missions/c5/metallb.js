@@ -35,7 +35,7 @@ export default {
   },
   hints: [
     { pt: 'Os recursos são do grupo `metallb.io/v1beta1`: `IPAddressPool` com `spec.addresses` e `L2Advertisement` com `spec.ipAddressPools`. `oc explain ipaddresspool.spec` mostra os campos, e `oc describe svc` mostra os eventos do MetalLB.', en: 'The resources belong to `metallb.io/v1beta1`: `IPAddressPool` with `spec.addresses` and `L2Advertisement` with `spec.ipAddressPools`. `oc explain ipaddresspool.spec` shows the fields, and `oc describe svc` shows the MetalLB events.' },
-    { pt: 'Um IP fixo é pedido com a anotação `metallb.universe.tf/loadBalancerIPs` no service.', en: 'A fixed IP is requested with the `metallb.universe.tf/loadBalancerIPs` annotation on the service.' },
+    { pt: 'Um IP fixo é pedido no campo `spec.loadBalancerIP` do service (o MetalLB também aceita a anotação `metallb.io/loadBalancerIPs`).', en: 'A fixed IP is requested in the service `spec.loadBalancerIP` field (MetalLB also accepts the `metallb.io/loadBalancerIPs` annotation).' },
     { pt: 'IP alocado mas sem resposta? Falta o anúncio L2 para o pool dele.', en: 'IP allocated but no answer? The L2 advertisement for its pool is missing.' },
   ],
   setup(w) {
@@ -85,7 +85,7 @@ spec:
   ipAddressPools:
     - games-pool
 EOF`, pt: 'Pool e anúncio num arquivo só.', en: 'Pool and advertisement in a single file.' },
-    { cmd: `oc annotate svc chat -n games metallb.universe.tf/loadBalancerIPs=${FIXO}`, pt: 'Pede o IP fixo antes de criar o pool, para ele não ser dado a outro service.', en: 'Requests the fixed IP before creating the pool, so it is not handed to another service.' },
+    { cmd: `oc patch svc chat -n games -p '{"spec":{"loadBalancerIP":"${FIXO}"}}'`, pt: 'Pede o IP fixo antes de criar o pool, para ele não ser dado a outro service.', en: 'Requests the fixed IP before creating the pool, so it is not handed to another service.' },
     { cmd: 'oc apply -f metallb.yaml', pt: 'Cria o pool e o anúncio.', en: 'Creates the pool and the advertisement.' },
     { cmd: 'oc get svc -n games', pt: 'Os dois recebem IP.', en: 'Both get an IP.' },
     { cmd: `echo oi | nc ${FIXO} 9000`, pt: 'O chat responde de fora.', en: 'The chat answers from outside.' },

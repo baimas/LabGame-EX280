@@ -31,7 +31,7 @@ export default {
   },
   hints: [
     { pt: 'A SCC que admitiu um pod aparece na anotação `openshift.io/scc`. Por padrão é a `restricted-v2`, que roda com um UID alto do projeto.', en: 'The SCC that admitted a pod shows up in the `openshift.io/scc` annotation. By default it is `restricted-v2`, which runs with a high project UID.' },
-    { pt: '`oc adm policy add-scc-to-user anyuid -z NOME` dá a SCC a uma service account do projeto atual.', en: '`oc adm policy add-scc-to-user anyuid -z NAME` grants the SCC to a service account of the current project.' },
+    { pt: '`oc adm policy add-scc-to-user anyuid -z NOME` dá a SCC a uma service account do projeto atual. Outro caminho, só no projeto: `oc create role NOME --verb use --resource scc --resource-name anyuid` e um rolebinding para a conta.', en: '`oc adm policy add-scc-to-user anyuid -z NAME` grants the SCC to a service account of the current project. Another way, scoped to the project: `oc create role NAME --verb use --resource scc --resource-name anyuid` plus a rolebinding for the account.' },
     { pt: '`oc set serviceaccount deployment/NOME CONTA` troca a service account e dispara um rollout. `oc get deploy NOME -o yaml | oc adm policy scc-subject-review -f -` diz qual SCC vai admitir o pod.', en: '`oc set serviceaccount deployment/NAME ACCOUNT` changes the service account and triggers a rollout. `oc get deploy NAME -o yaml | oc adm policy scc-subject-review -f -` tells which SCC will admit the pod.' },
   ],
   setup(w) {

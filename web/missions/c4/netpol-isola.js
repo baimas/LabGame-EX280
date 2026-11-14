@@ -3,7 +3,7 @@ import { requisicao } from '../../sim/net.js';
 import { deDentro } from './comum.js';
 
 const NS = 'orders';
-const HOST = 'orders.apps.ocp4.example.com';
+const HOST = 'orders.apps.lab.example.com';
 
 // Requisição HTTP de um pod para um service, com tempo curto.
 const acessa = (w, ns, app, alvo) => requisicao(w.cluster, deDentro(w, ns, app), { host: alvo, porta: 8080, caminho: '/', https: false });

@@ -1,7 +1,7 @@
 // Repositório de charts do Helm disponível na rede do laboratório.
 import { REGISTRY } from './images.js';
 
-export const REPO_URL = 'http://helm.ocp4.example.com/charts';
+export const REPO_URL = 'http://helm.lab.example.com/charts';
 
 function helpers(n) {
   return `{{/*
@@ -136,7 +136,7 @@ function notas(n) {
 {{- if .Values.route.enabled }}
 
 Access the application at:
-  http{{ if .Values.route.tls }}s{{ end }}://{{ .Values.route.host | default (printf "%s-%s.apps.ocp4.example.com" (include "${n}.fullname" .) .Release.Namespace) }}
+  http{{ if .Values.route.tls }}s{{ end }}://{{ .Values.route.host | default (printf "%s-%s.apps.lab.example.com" (include "${n}.fullname" .) .Release.Namespace) }}
 {{- else }}
 
 The application is not exposed. Enable the route with:

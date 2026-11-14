@@ -40,6 +40,9 @@ Abra http://localhost:8280 no navegador.
 3. Clique em **Corrigir** ou rode `lab grade` para ver o que passou e o que falta.
 4. Cada dica custa parte do XP. A solução comentada fica disponível depois da primeira
    correção, e cada passo pode ser executado direto no terminal.
+5. Abra **Procurar na documentação oficial** para treinar a busca, como na prova: cada missão
+   indica o guia do OpenShift 4.22 (com link para a versão em página única) e os termos para
+   procurar com Ctrl+F. Essa dica não custa XP. Todos os termos foram conferidos nos guias.
 
 Quando estiver confiante, faça um **simulado** no topo da lista: 3 horas, nota de 0 a 300
 e corte em 210.
@@ -57,7 +60,7 @@ navegador.
 | 2. Aplicações empacotadas | Templates, Helm, rollouts, services, labels | 7 missões |
 | 3. Identidade | HTPasswd, usuários, grupos, RBAC | 5 missões |
 | 4. Segurança de rede | Routes, TLS, network policies | 5 missões |
-| 5. Além do HTTP | LoadBalancer, acesso externo | 4 missões |
+| 5. Além do HTTP | LoadBalancer, acesso externo, redes adicionais (UDN e NAD) | 6 missões |
 | 6. Autosserviço | Quotas, limit ranges, project template | 5 missões |
 | 7. Operators | Instalar e remover operators | 4 missões |
 | 8. Segurança de aplicações | Service accounts, SCC, aplicações privilegiadas, jobs, cron jobs | 6 missões |
@@ -65,7 +68,7 @@ navegador.
 
 ### Modo prova
 
-Dois simulados (A e B), de 17 tarefas cada, cobrindo todos os domínios num cluster só:
+Dois simulados (A e B), de 18 tarefas cada, cobrindo todos os domínios num cluster só:
 
 - 3 horas de cronômetro; quando o tempo acaba, a prova é entregue sozinha.
 - Sem dicas, sem solução e sem `lab grade`: a correção acontece só na entrega.
@@ -126,6 +129,8 @@ faça um simulado antes de jogar as missões que ele usa, ou guarde-o para o fim
 - **Endereços para o fliperama:** `IPAddressPool`, `L2Advertisement` e IP fixo no MetalLB.
 - **Uma porta no nó:** services NodePort, inclusive trocando o tipo de um service existente.
 - **O IP que ninguém alcança:** troubleshooting de MetalLB (pool, anúncio) e network policy para tráfego externo.
+- **Cada cliente na sua rede:** rede primária definida pelo usuário (UserDefinedNetwork) com isolamento entre projetos.
+- **O banco na rede de servidores:** NetworkAttachmentDefinition `host-device` com IP estático, testada do host `utility`.
 
 **Capítulo 6 — Autosserviço**
 
@@ -188,9 +193,25 @@ uma saída. Não reproduz tempos reais de rollout, problemas de infraestrutura n
 web. Use-o para ganhar fluência e, se puder, complemente com prática em um cluster real
 antes da prova.
 
-O simulador se apresenta como OpenShift 4.18. Confira na
+O simulador se apresenta como OpenShift 4.22 (Kubernetes 1.35), a versão do curso DO280 e da
+prova atual, com o domínio `lab.example.com` dos laboratórios. Confira na
 [página oficial da prova](https://www.redhat.com/en/services/training/red-hat-certified-openshift-administrator-exam)
-a versão e os objetivos vigentes.
+e no portal da Red Hat qual versão foi atribuída a você.
+
+### O que mudou do 4.18 para o 4.22
+
+- **Redes adicionais:** UserDefinedNetwork, ClusterUserDefinedNetwork e
+  NetworkAttachmentDefinition (seção "Configure Additional Pod Networks" do curso).
+- **SCC:** as novas `restricted-v3` e `nested-container`, a anotação
+  `openshift.io/required-scc` e o acesso a SCC por RBAC (`oc create role --verb use --resource scc`).
+- **MetalLB:** a documentação usa `metallb.io/address-pool` e `spec.loadBalancerIP`; o prefixo
+  antigo `metallb.universe.tf/` continua aceito.
+- **Saídas do `oc`:** `deleted from X namespace` e a mensagem de quota `must specify ... for: CONTÊINER`.
+- **Ambiente do curso:** template `mariadb-persistent` (`rhel10/mariadb-118`), `oc debug node`,
+  canais `stable-4.22`, `eus-4.22` e `candidate-5.0`.
+
+Na missão de atualização de minor (4.21 → 4.22), as APIs depreciadas são de um operator
+fictício da Nimbus: o que a prova cobra é o mecanismo (`apirequestcounts` e admin-ack).
 
 ## Como o projeto é organizado
 

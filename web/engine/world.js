@@ -11,6 +11,8 @@ import { credencialValida, pode } from '../sim/rbac.js';
 export { REGISTRY, HOME };
 
 export function createWorld({ lang = 'pt-BR', openEditor, sleep, write, ask, salvo } = {}) {
+  // Sessões salvas antes da versão 4.22 do jogo usavam o domínio ocp4.example.com.
+  if (salvo && JSON.stringify(salvo).includes('ocp4.example.com')) salvo = JSON.parse(JSON.stringify(salvo).replaceAll('ocp4.example.com', 'lab.example.com'));
   const cluster = salvo ? Cluster.restore(salvo.cluster) : new Cluster();
   if (salvo) migra(cluster);
   const fs = salvo ? FS.restore(salvo.fs) : new FS();

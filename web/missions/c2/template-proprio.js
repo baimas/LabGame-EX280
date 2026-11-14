@@ -2,7 +2,7 @@ import { REGISTRY } from '../../engine/world.js';
 
 const NS = 'catalog';
 const DIR = '/home/student/labs/catalog';
-const HOST = 'catalog.apps.ocp4.example.com';
+const HOST = 'catalog.apps.lab.example.com';
 
 const TEMPLATE = `apiVersion: template.openshift.io/v1
 kind: Template

@@ -66,6 +66,31 @@ const MYSQL = {
   ],
 };
 
+// MariaDB com armazenamento persistente (o template que o curso 4.22 usa).
+const MARIADB = JSON.parse(JSON.stringify(MYSQL)
+  .replaceAll('MySQL (Ephemeral)', 'MariaDB')
+  .replaceAll('MySQL database service, without persistent storage. WARNING: Any data stored will be lost upon pod destruction. Only use this template for testing', 'MariaDB database service, with persistent storage. For more information about using this database image, including OpenShift considerations, see https://github.com/sclorg/mariadb-container/blob/master/README.md.')
+  .replaceAll('database,mysql', 'database,mariadb')
+  .replaceAll('mysql-ephemeral-template', 'mariadb-persistent-template')
+  .replaceAll('mysql-ephemeral', 'mariadb-persistent')
+  .replaceAll('MySQL Connection', 'MariaDB Connection')
+  .replaceAll('MySQL root user Password', 'MariaDB root Password')
+  .replaceAll('Password for the MySQL', 'Password for the MariaDB')
+  .replaceAll('Username for MySQL', 'Username for MariaDB')
+  .replaceAll('MySQL Database Name', 'MariaDB Database Name')
+  .replaceAll('Name of the MySQL database', 'Name of the MariaDB database')
+  .replaceAll('"value":"mysql"', '"value":"mariadb"')
+  .replaceAll('"name":"mysql"', '"name":"mariadb"')
+  .replaceAll(`${REGISTRY}/rhel9/mysql-80:1-228`, `${REGISTRY}/rhel10/mariadb-118:\${MARIADB_VERSION}`));
+MARIADB.parameters.push(
+  { name: 'MARIADB_VERSION', displayName: 'Version of MariaDB Image', description: 'Version of MariaDB image to be used (10.1-6, or latest).', value: 'latest', required: true },
+  { name: 'VOLUME_CAPACITY', displayName: 'Volume Capacity', description: 'Volume space available for data, e.g. 512Mi, 2Gi.', value: '1Gi', required: true },
+);
+MARIADB.objects.splice(2, 0, { apiVersion: 'v1', kind: 'PersistentVolumeClaim', metadata: { name: '${DATABASE_SERVICE_NAME}' }, spec: { accessModes: ['ReadWriteOnce'], resources: { requests: { storage: '${VOLUME_CAPACITY}' } } } });
+const dep = MARIADB.objects.find((o) => o.kind === 'Deployment').spec.template.spec;
+dep.containers[0].volumeMounts = [{ name: '${DATABASE_SERVICE_NAME}-data', mountPath: '/var/lib/mysql/data' }];
+dep.volumes = [{ name: '${DATABASE_SERVICE_NAME}-data', persistentVolumeClaim: { claimName: '${DATABASE_SERVICE_NAME}' } }];
+
 const WEBAPP = {
   kind: 'Template',
   metadata: {
@@ -102,4 +127,4 @@ const WEBAPP = {
   ],
 };
 
-export const TEMPLATES = [MYSQL, WEBAPP];
+export const TEMPLATES = [MARIADB, MYSQL, WEBAPP];

@@ -6,8 +6,9 @@ import { endpoints, podPronto, resolveEnv, tlsDaAplicacao } from './controllers.
 import { ROUTER_CERT, API_CERT, SERVICE_CA, verifica } from './tls.js';
 import { matchLabels } from './util.js';
 import { VERSAO, KUBE } from './seed.js';
+import { redeDoPod, podPorIp, naRedeSecundaria, REDE_SERVIDORES } from './redes.js';
 
-const API_HOST = 'api.ocp4.example.com';
+const API_HOST = 'api.lab.example.com';
 const CONSOLE_HOST = `console-openshift-console.${APPS_DOMAIN}`;
 const KUBE_IP = '172.30.0.1';
 const DNS_IP = '172.30.0.10';
@@ -71,6 +72,8 @@ const seleciona = (np, labels) => matchLabels(labels, np.spec.podSelector || {})
 // Avalia ingress no destino e egress na origem. `origem` e `destino` têm
 // { ns, labels, ip } e o destino também { porta, nomePorta, protocolo }.
 export function permite(c, origem, destino) {
+  // Redes primárias de usuário (UDN) isolam os pods de outras redes.
+  if (origem.pod && destino.pod && origem.pod !== destino.pod && redeDoPod(c, origem.pod) !== redeDoPod(c, destino.pod)) return false;
   if (destino.ns) {
     const pols = c.list('NetworkPolicy', destino.ns).filter((np) => tipos(np).includes('Ingress') && seleciona(np, destino.labels || {}));
     if (pols.length && !pols.some((np) => (np.spec.ingress || []).some((r) => (!r.from || !r.from.length || r.from.some((par) => casaPar(c, par, np.metadata.namespace, origem))) && casaPorta(r, destino)))) return false;
@@ -82,11 +85,11 @@ export function permite(c, origem, destino) {
   return true;
 }
 
-const comoOrigem = (p) => ({ ns: p.metadata.namespace, labels: p.metadata.labels || {}, ip: p.status?.podIP });
+const comoOrigem = (p) => ({ ns: p.metadata.namespace, labels: p.metadata.labels || {}, ip: p.status?.podIP, pod: p });
 
 function comoDestino(p, porta) {
   const nomePorta = p.spec.containers.flatMap((x) => x.ports || []).find((x) => x.containerPort === porta)?.name;
-  return { ns: p.metadata.namespace, labels: p.metadata.labels || {}, ip: p.status?.podIP, porta, nomePorta, protocolo: 'TCP' };
+  return { ns: p.metadata.namespace, labels: p.metadata.labels || {}, ip: p.status?.podIP, porta, nomePorta, protocolo: 'TCP', pod: p };
 }
 
 // O roteador de ingress, origem do tráfego que chega pelas routes.
@@ -113,6 +116,9 @@ export function resolve(c, host, pod) {
     if (svc) return pod ? { tipo: 'service', svc, ip: h } : { tipo: 'inalcancavel', ip: h };
     const alvo = c.list('Pod').find((p) => p.status?.podIP === h);
     if (alvo) return pod ? { tipo: 'pod', pod: alvo, ip: h } : { tipo: 'inalcancavel', ip: h };
+    const extra = podPorIp(c, h);
+    if (extra?.tipo === 'udn') return pod ? { tipo: 'pod', pod: extra.pod, ip: h } : { tipo: 'inalcancavel', ip: h };
+    if (extra?.tipo === 'secundaria') return { tipo: 'secundaria', pod: extra.pod, rede: extra.rede, ip: h };
     if (h === '192.168.50.10') return { tipo: 'no', ip: h };
     return { tipo: 'inalcancavel', ip: h };
   }
@@ -276,6 +282,9 @@ function escuta(c, pod, porta) {
 
 // Abre uma conexão TCP. Devolve { pod, porta, proto }, { servidor } ou { erro }.
 export function destinoTcp(c, pod, host, porta) {
+  // Origem fora do cluster que não é a estação de trabalho (host `utility`).
+  const host_ = pod?.hostExterno ? pod : null;
+  if (host_) pod = null;
   const alvo = resolve(c, host, pod);
   if (!alvo) return { erro: 'dns' };
   if (pod && !/^\d/.test(host) && host !== 'localhost' && !dnsLiberado(c, pod)) return { erro: 'dns' };
@@ -313,7 +322,15 @@ export function destinoTcp(c, pod, host, porta) {
       return { erro: 'recusada' };
     }
     case 'pod': {
+      if (alvo.pod !== pod && semRota(c, pod, alvo.pod)) return { erro: 'semRota' };
       if (alvo.pod !== pod && !permite(c, origem, comoDestino(alvo.pod, porta))) return { erro: 'bloqueada' };
+      const proto = escuta(c, alvo.pod, porta);
+      return proto ? { pod: alvo.pod, porta, proto } : { erro: 'recusada' };
+    }
+    case 'secundaria': {
+      // Rede secundária (NAD): alcançável na rede de servidores e por pods ligados a ela.
+      const alcanca = (host_ && alvo.ip.startsWith(`${REDE_SERVIDORES}.`)) || naRedeSecundaria(c, pod, alvo.rede);
+      if (!alcanca) return { erro: 'bloqueada' };
       const proto = escuta(c, alvo.pod, porta);
       return proto ? { pod: alvo.pod, porta, proto } : { erro: 'recusada' };
     }
@@ -322,8 +339,20 @@ export function destinoTcp(c, pod, host, porta) {
   }
 }
 
+// Pod de uma rede de usuário tentando um IP da rede padrão: não há rota.
+function semRota(c, origemPod, destinoPod) {
+  return Boolean(origemPod?.metadata) && redeDoPod(c, origemPod) !== 'default' && redeDoPod(c, destinoPod) === 'default';
+}
+
 // Executa uma requisição HTTP. `pod` é a origem (null = estação de trabalho).
 export function requisicao(c, pod, req) {
+  if (pod?.hostExterno) {
+    const d = destinoTcp(c, pod, req.host, req.porta ?? (req.https ? 443 : 80));
+    if (d.erro) return d;
+    if (d.servidor === 'api') return apiServer(req);
+    if (d.servidor === 'roteador') pod = null;
+    else return respostaDoPod(c, d.pod, d.porta, req.caminho, req.https);
+  }
   const alvo = resolve(c, req.host, pod);
   if (pod && alvo && !/^\d/.test(req.host) && req.host !== 'localhost' && !dnsLiberado(c, pod)) return { erro: 'dns' };
   if (!alvo) return { erro: 'dns' };
@@ -347,10 +376,12 @@ export function requisicao(c, pod, req) {
     }
     case 'pod': {
       const destino = alvo.pod;
+      if (destino !== pod && semRota(c, pod, destino)) return { erro: 'semRota', ip: alvo.ip };
       if (destino !== pod && !permite(c, comoOrigem(pod), comoDestino(destino, porta))) return { erro: 'bloqueada', ip: alvo.ip };
       const r = respostaDoPod(c, destino, porta, req.caminho, req.https);
       return r.erro ? { ...r, ip: alvo.ip } : r;
     }
+    case 'secundaria':
     case 'lb':
     case 'no': {
       const d = destinoTcp(c, pod, req.host, porta);

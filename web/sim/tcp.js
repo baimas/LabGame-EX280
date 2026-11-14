@@ -2,7 +2,8 @@
 import { destinoTcp } from './net.js';
 import { resolveEnv } from './controllers.js';
 
-const origem = (ctx) => (ctx.sh.pod ? ctx.env.cluster.get('Pod', ctx.sh.pod.nome, ctx.sh.pod.ns) : null);
+// Origem da conexão: o pod do `oc rsh`, um host do laboratório (`ssh utility`) ou a estação.
+const origem = (ctx) => (ctx.sh.pod?.hostExterno ? ctx.sh.pod : ctx.sh.pod ? ctx.env.cluster.get('Pod', ctx.sh.pod.nome, ctx.sh.pod.ns) : null);
 const ipDe = (ctx, host) => (/^\d/.test(host) ? host : host);
 
 // Espera o tempo limite de uma conexão que não responde.
@@ -27,6 +28,7 @@ export async function nc(ctx) {
   const d = destinoTcp(ctx.env.cluster, origem(ctx), host, porta);
   if (d.erro === 'dns') return { err: `${cab}Ncat: Could not resolve hostname "${host}": Name or service not known. QUITTING.\n`, code: 2 };
   if (d.erro === 'recusada') return { err: `${cab}Ncat: Connection refused.\n`, code: 1 };
+  if (d.erro === 'semRota') return { err: `${cab}Ncat: No route to host.\n`, code: 1 };
   if (d.erro) {
     await esperaTimeout(ctx, o.w);
     return { err: `${cab}Ncat: TIMEOUT.\n`, code: 1 };
@@ -83,11 +85,12 @@ export async function mysql(ctx) {
     await esperaTimeout(ctx, 10);
     return { err: err + `ERROR 2003 (HY000): Can't connect to MySQL server on '${o.h}:${porta}' (110)\n`, code: 1 };
   }
+  if (d.erro === 'semRota') return { err: err + `ERROR 2002 (HY000): Can't connect to server on '${o.h}' (113)\n`, code: 1 };
   if (d.erro || d.proto !== 'mysql') return { err: err + `ERROR 2003 (HY000): Can't connect to MySQL server on '${o.h}:${porta}' (111)\n`, code: 1 };
   const env = resolveEnv(ctx.env.cluster, d.pod, d.pod.spec.containers[0]).env;
   const ehRoot = usuario === 'root' && env.MYSQL_ROOT_PASSWORD && o.p === env.MYSQL_ROOT_PASSWORD;
   const ehUsuario = env.MYSQL_USER && usuario === env.MYSQL_USER && o.p === env.MYSQL_PASSWORD;
-  const cliente = ctx.sh.pod ? origem(ctx)?.status.podIP : '172.25.250.9';
+  const cliente = ctx.sh.pod?.hostExterno ? ctx.sh.pod.ip : ctx.sh.pod ? origem(ctx)?.status.podIP : '172.25.250.9';
   if (!ehRoot && !ehUsuario) return { err: err + `ERROR 1045 (28000): Access denied for user '${usuario}'@'${cliente}' (using password: ${o.p ? 'YES' : 'NO'})\n`, code: 1 };
   const bancos = ['information_schema', ...(ehRoot ? ['mysql', 'performance_schema', 'sys'] : []), ...(env.MYSQL_DATABASE ? [env.MYSQL_DATABASE] : [])].sort();
   if (o.banco && !bancos.includes(o.banco)) return { err: err + `ERROR 1049 (42000): Unknown database '${o.banco}'\n`, code: 1 };
@@ -106,4 +109,55 @@ export async function mysql(ctx) {
     else return { out, err: err + `ERROR 1064 (42000) at line 1: ${ctx.env.t('[simulador] consulta não simulada. Use SELECT VERSION(), SELECT 1, SHOW DATABASES, SELECT USER() ou SELECT @@HOSTNAME.', '[simulator] query not simulated. Use SELECT VERSION(), SELECT 1, SHOW DATABASES, SELECT USER(), or SELECT @@HOSTNAME.')}\n`, code: 1 };
   }
   return { out, err, code: 0 };
+}
+
+// Cliente `psql` mínimo: conexão, autenticação e algumas consultas.
+export async function psql(ctx) {
+  const o = { h: null, p: '5432', U: null, d: null, c: null, t: false };
+  for (let i = 0; i < ctx.args.length; i++) {
+    const a = ctx.args[i];
+    const v = () => (a.length > 2 && !a.startsWith('--') ? a.slice(2) : a.includes('=') ? a.split('=').slice(1).join('=') : ctx.args[++i]);
+    if (/^-h|^--host/.test(a)) o.h = v();
+    else if (/^-p|^--port/.test(a)) o.p = v();
+    else if (/^-U|^--username/.test(a)) o.U = v();
+    else if (/^-d|^--dbname/.test(a)) o.d = v();
+    else if (/^-c|^--command/.test(a)) o.c = v();
+    else if (a === '-t' || a === '--tuples-only') o.t = true;
+    else if (!a.startsWith('-')) {
+      if (!o.d) o.d = a;
+      else o.U ??= a;
+    }
+  }
+  const vars = ctx.sh.vars || {};
+  const host = o.h || vars.PGHOST;
+  const porta = Number(o.p);
+  const falhaCon = (motivo, dica = true) => ({ err: `psql: error: connection to server at "${host}", port ${porta} failed: ${motivo}\n${dica ? `\tIs the server running on host "${host}" and accepting TCP/IP connections on port ${porta}?\n` : ''}`, code: 2 });
+  if (!host) return { err: 'psql: error: connection to server on socket "/run/postgresql/.s.PGSQL.5432" failed: No such file or directory\n\tIs the server running locally and accepting connections on that socket?\n', code: 2 };
+  const d = destinoTcp(ctx.env.cluster, origem(ctx), host, porta);
+  if (d.erro === 'dns') return { err: `psql: error: could not translate host name "${host}" to address: Name or service not known\n`, code: 2 };
+  if (d.erro === 'semRota') return falhaCon('No route to host');
+  if (d.erro === 'bloqueada') {
+    const limite = Number(vars.PGCONNECT_TIMEOUT) || 30;
+    await ctx.env.sleep(Math.min(limite, 30));
+    return falhaCon('timeout expired', false);
+  }
+  if (d.erro || d.proto !== 'postgresql') return falhaCon('Connection refused');
+  const env = resolveEnv(ctx.env.cluster, d.pod, d.pod.spec.containers[0]).env;
+  const usuario = o.U || 'student';
+  let senha = vars.PGPASSWORD;
+  if (senha === undefined && ctx.env.ask) senha = await ctx.env.ask(`Password for user ${usuario}: `, true);
+  if (senha === undefined) return { err: `psql: error: connection to server at "${host}", port ${porta} failed: fe_sendauth: no password supplied\n`, code: 2 };
+  const ok = (usuario === env.POSTGRESQL_USER && senha === env.POSTGRESQL_PASSWORD) || (usuario === 'postgres' && senha === env.POSTGRESQL_ADMIN_PASSWORD);
+  if (!ok) return { err: `psql: error: connection to server at "${host}", port ${porta} failed: FATAL:  password authentication failed for user "${usuario}"\n`, code: 2 };
+  const banco = o.d || usuario;
+  if (banco !== env.POSTGRESQL_DATABASE && banco !== 'postgres') return { err: `psql: error: connection to server at "${host}", port ${porta} failed: FATAL:  database "${banco}" does not exist\n`, code: 2 };
+  if (o.c === null) return { err: ctx.env.t('[simulador] A sessão interativa do psql não é simulada: use -c "SELECT ...".\n', '[simulator] The interactive psql session is not simulated: use -c "SELECT ...".\n'), code: 2 };
+  const q = o.c.trim().replace(/;$/, '').toLowerCase().replace(/\s+/g, ' ');
+  const um = (col, val) => (o.t ? ` ${val}\n\n` : ` ${col} \n${'-'.repeat(Math.max(col.length, String(val).length) + 2)}\n ${String(val).padStart(col.length)}\n(1 row)\n\n`);
+  if (q === 'select 1') return { out: um('?column?', 1), code: 0 };
+  if (q === 'select current_database()') return { out: um('current_database', banco), code: 0 };
+  if (q === 'select current_user') return { out: um('current_user', usuario), code: 0 };
+  if (q === 'select inet_server_addr()') return { out: um('inet_server_addr', host), code: 0 };
+  if (q === 'select version()') return { out: um('version', 'PostgreSQL 18.0 on x86_64-redhat-linux-gnu'), code: 0 };
+  return { err: `ERROR:  ${ctx.env.t('[simulador] consulta não simulada. Use SELECT 1, SELECT current_database(), SELECT current_user ou SELECT inet_server_addr().', '[simulator] query not simulated. Use SELECT 1, SELECT current_database(), SELECT current_user, or SELECT inet_server_addr().')}\n`, code: 1 };
 }
