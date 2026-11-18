@@ -22,6 +22,9 @@ import { criaProjeto, configProjetos, templateInicial } from '../projetos.js';
 import { jobDoCron } from '../jobs.js';
 import { noHost } from '../no.js';
 import { validaOpcoes, ajudaReal, ajudaOptions, versaoCliente, comandosRaiz } from './completar.js';
+import { usoPod } from '../hpa.js';
+import { render as renderGo } from '../gotemplate.js';
+import { run, cp, autoscale, importImage, tag, setProbe, setTriggers, setImageLookup, config, completion, mustGather, inspect, nodeLogs, statusSts, registraContexto } from './do180.js';
 import { resumoUpgrade, recomendadas, versaoAtual, kubeDa, imagemDa, CANAIS_DISPONIVEIS } from '../updates.js';
 
 const APLICADO = 'kubectl.kubernetes.io/last-applied-configuration';
@@ -862,7 +865,7 @@ function mudaTemplate(ctx, sub, k, nome, ns, fn) {
     c.update(p);
     return true;
   }
-  if (!['Deployment', 'ReplicaSet'].includes(k.kind)) {
+  if (!['Deployment', 'ReplicaSet', 'StatefulSet'].includes(k.kind)) {
     c.must(k.kind, nome, ns);
     throw erro(`error: ${k.plural}/${nome} the object is not a pod or does not have a pod template: *v1.${k.kind}`);
   }
@@ -918,8 +921,25 @@ function set(ctx) {
     });
     return ok(`${k.out}/${nome} serviceaccount updated\n`);
   }
+  if (sub === 'probe') return setProbe(ctx, resto, mudaTemplate);
+  if (sub === 'triggers') return setTriggers(ctx, resto, mudaTemplate);
+  if (sub === 'image-lookup') return setImageLookup(ctx, resto);
+  if (sub === 'selector') {
+    const { k, nome, resto: itens } = umAlvo(pos, 'set');
+    if (!itens.length) throw erro('error: at least one selector must be specified');
+    const o = clone(c.must(k.kind, nome, ns));
+    const sel = {};
+    for (const it of String(itens[0]).split(',')) {
+      if (!it.includes('=')) throw erro(`error: invalid selector "${it}"`);
+      sel[it.split('=')[0]] = it.split('=').slice(1).join('=');
+    }
+    if (k.kind === 'Service') o.spec.selector = sel;
+    else throw erro(`error: the object is not a service: ${k.plural}/${nome}`);
+    c.update(o);
+    return ok(`${k.out}/${nome} selector updated\n`);
+  }
   if (!['env', 'image', 'resources', 'volume'].includes(sub)) {
-    if (['build-hook', 'build-secret', 'data', 'deployment-hook', 'image-lookup', 'probe', 'route-backends', 'selector', 'subject', 'triggers'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub}`);
+    if (['build-hook', 'build-secret', 'data', 'deployment-hook', 'route-backends', 'subject'].includes(sub)) throw naoSimulado(ctx, `oc set ${sub}`);
     throw desconhecido(sub, 'set');
   }
   const { k, nome, resto: itens } = umAlvo(pos, 'set');
@@ -1014,12 +1034,26 @@ function set(ctx) {
       return f.one(flag);
     };
     const vol = { name: nomeVol };
+    let novoClaim = null;
     if (tipo === 'configmap') vol.configMap = { name: exige('configmap-name') };
     else if (tipo === 'secret') vol.secret = { secretName: exige('secret-name') };
-    else if (tipo === 'pvc' || tipo === 'persistentvolumeclaim') vol.persistentVolumeClaim = { claimName: exige('claim-name') };
+    else if (tipo === 'pvc' || tipo === 'persistentvolumeclaim') {
+      // Com --claim-size, o oc cria o PVC junto.
+      if (f.has('claim-size')) {
+        const modos = { rwo: 'ReadWriteOnce', rwx: 'ReadWriteMany', rox: 'ReadOnlyMany', rwop: 'ReadWriteOncePod' };
+        const modo = String(f.one('claim-mode') || 'ReadWriteOnce');
+        const claim = f.one('claim-name') || `pvc-${rand(5)}`;
+        novoClaim = { kind: 'PersistentVolumeClaim', metadata: { name: claim, namespace: ns }, spec: { accessModes: [modos[modo.toLowerCase()] || modo], resources: { requests: { storage: f.one('claim-size') } }, ...(f.has('claim-class') ? { storageClassName: f.one('claim-class') } : {}) } };
+        vol.persistentVolumeClaim = { claimName: claim };
+      } else vol.persistentVolumeClaim = { claimName: exige('claim-name') };
+    }
     else if (tipo === 'emptydir') vol.emptyDir = {};
     else if (tipo === 'hostpath') vol.hostPath = { path: exige('path') };
     else throw erro(`error: invalid volume type ${tipo}. Supported types: emptyDir, hostPath, secret, configmap, persistentVolumeClaim`);
+    if (novoClaim) {
+      if (c.get('PersistentVolumeClaim', novoClaim.metadata.name, ns)) throw erro(`Error from server (AlreadyExists): persistentvolumeclaims "${novoClaim.metadata.name}" already exists`);
+      c.create(novoClaim);
+    }
     mudaTemplate(ctx, sub, k, nome, ns, (spec) => {
       if ((spec.volumes || []).some((v) => v.name === nomeVol)) {
         if (!f.has('overwrite')) throw erro(`error: volume '${nomeVol}' already exists. Use --overwrite to replace`);
@@ -1056,7 +1090,7 @@ function scale(ctx) {
   const c = ctx.env.cluster;
   if (!f.has('replicas')) throw erro('error: required flag(s) "replicas" not set');
   const { k, nome } = umAlvo(pos, 'scale');
-  if (!['Deployment', 'ReplicaSet'].includes(k.kind)) throw erro(`error: could not find proper group-version for scale subresource of ${k.resource}`);
+  if (!['Deployment', 'ReplicaSet', 'StatefulSet'].includes(k.kind)) throw erro(`error: could not find proper group-version for scale subresource of ${k.resource}`);
   const o = clone(c.must(k.kind, nome, nsDe(ctx, f)));
   o.spec.replicas = Number(f.one('replicas'));
   c.update(o);
@@ -1175,6 +1209,13 @@ async function rollout(ctx) {
     throw desconhecido(sub, 'rollout');
   }
   const { k, nome } = umAlvo(pos, 'rollout');
+  if (k.kind === 'StatefulSet' && sub === 'status') return statusSts(ctx, nome, ns);
+  if (k.kind === 'StatefulSet' && sub === 'restart') {
+    const novo = clone(c.must('StatefulSet', nome, ns));
+    ((novo.spec.template.metadata ??= {}).annotations ??= {})['kubectl.kubernetes.io/restartedAt'] = c.iso();
+    c.update(novo);
+    return ok(`statefulset.apps/${nome} restarted\n`);
+  }
   if (k.kind !== 'Deployment') throw erro(`error: no ${sub === 'undo' ? 'rollbacker' : sub === 'history' ? 'history viewer' : sub === 'status' ? 'status viewer' : 'handler'} has been implemented for "${k.kind}"`);
   const d = c.must('Deployment', nome, ns);
   const rss = () => c.list('ReplicaSet', ns).filter((r) => donoDe(r, d)).sort((a, b) => Number(a.metadata.annotations[REV]) - Number(b.metadata.annotations[REV]));
@@ -1182,7 +1223,7 @@ async function rollout(ctx) {
   if (sub === 'status') {
     let out = '';
     let ultima = '';
-    for (let i = 0; i <= 30; i++) {
+    for (let i = 0; i <= 120; i++) {
       const atual = c.must('Deployment', nome, ns);
       const st = atual.status || {};
       const n = atual.spec.replicas;
@@ -1541,6 +1582,10 @@ function adm(ctx) {
     if (saida === 'name') return ok(`template.template.openshift.io/${tpl.metadata.name}\n`);
     return ok(paraYaml(tpl));
   }
+  const resto2 = [oque, ...resto].filter((x) => x !== undefined);
+  if (sub === 'must-gather') return mustGather(ctx, resto2);
+  if (sub === 'inspect') return inspect(ctx, resto2);
+  if (sub === 'node-logs') return nodeLogs(ctx, resto2);
   if (sub !== 'top') throw naoSimulado(ctx, `oc adm ${sub ?? ''}`.trim());
   const { f } = parseArgs(resto);
   if (/^nodes?$/.test(oque)) {
@@ -1553,7 +1598,13 @@ function adm(ctx) {
     const ns = nsDe(ctx, f);
     const pods = c.list('Pod', f.has('all-namespaces') ? null : ns).filter(podPronto);
     if (!pods.length) return { err: `No resources found in ${ns} namespace.\n`, code: 0 };
-    return ok(table([['NAME', 'CPU(cores)', 'MEMORY(bytes)'], ...pods.map((p) => [p.metadata.name, `${1 + (hashNum(p.metadata.name) % 24)}m`, `${28 + (hashNum(p.metadata.uid) % 180)}Mi`])]));
+    const usos = pods.map((p) => ({ p, u: usoPod(c, p) }));
+    const ordem = f.one('sort-by');
+    if (ordem === 'cpu') usos.sort((a, b) => b.u.cpu - a.u.cpu);
+    else if (ordem === 'memory') usos.sort((a, b) => b.u.mem - a.u.mem);
+    else if (ordem) throw erro(`error: --sort-by accepts only cpu or memory`);
+    const linhas = usos.map(({ p, u }) => [...(f.has('all-namespaces') ? [p.metadata.namespace] : []), p.metadata.name, `${Math.max(1, u.cpu)}m`, `${Math.round(u.mem / 2 ** 20)}Mi`]);
+    return ok(table(f.has('no-headers') ? linhas : [[...(f.has('all-namespaces') ? ['NAMESPACE'] : []), 'NAME', 'CPU(cores)', 'MEMORY(bytes)'], ...linhas]));
   }
   throw erro('error: unknown command "' + (oque ?? '') + '" for "oc adm top"');
 }
@@ -1595,7 +1646,14 @@ export function skopeo(ctx) {
   }
   const a = findImage(ref);
   if (a.error) return { err: `FATA[0000] Error parsing image name "${alvo}": reading manifest ${a.tag || a.digest} in ${a.repo}: ${a.error === 'repo' ? 'name unknown: repository not found' : 'manifest unknown'}\n`, code: 1 };
-  return ok(JSON.stringify({ Name: a.image.repo, Digest: a.digest, RepoTags: Object.keys(a.image.tags), Created: '2026-10-20T09:14:02Z', DockerVersion: '', Labels: { version: a.tag }, Architecture: 'amd64', Os: 'linux', Layers: [0, 1, 2, 3].map((n) => `sha256:${hashNum(a.digest + n).toString(16).padStart(8, '0').repeat(8)}`), Env: [`APP_VERSION=${a.tag}`] }, null, 4) + '\n');
+  const dados = { Name: a.image.repo, Digest: a.digest, RepoTags: Object.keys(a.image.tags), Created: '2026-10-20T09:14:02Z', DockerVersion: '', Labels: { version: a.tag }, Architecture: 'amd64', Os: 'linux', Layers: [0, 1, 2, 3].map((n) => `sha256:${hashNum(a.digest + n).toString(16).padStart(8, '0').repeat(8)}`), Env: [`APP_VERSION=${a.tag}`] };
+  // --format / -f: template Go sobre o resultado.
+  const i = resto.findIndex((x) => x === '--format' || x === '-f' || x.startsWith('--format='));
+  if (i >= 0) {
+    const fmt = resto[i].startsWith('--format=') ? resto[i].slice(9) : resto[i + 1];
+    return ok(renderGo(fmt, dados) + '\n');
+  }
+  return ok(JSON.stringify(dados, null, 4) + '\n');
 }
 
 function replace(ctx) {
@@ -1641,6 +1699,13 @@ export const SUBS = {
   'new-app': newApp, expose, set, scale, label: rotula('labels', 'label'), annotate: rotula('annotations', 'annotate'),
   patch, edit, rollout, logs, process, replace, auth: authCmd, exec: (ctx) => exec(ctx, false), rsh: (ctx) => exec(ctx, true), explain, wait, status, kustomize: kustomizeCmd, diff, extract, version, 'api-resources': apiResources, adm, image: imagem,
   policy: (ctx) => admIdentidade(ctx, 'policy', ctx.args),
+  run, cp, autoscale, 'import-image': importImage, tag, completion,
+  config: (ctx) => {
+    const r = config(ctx);
+    if (r) return r;
+    if (!ctx.args[0]) return ok(ajudaReal(['config']));
+    throw naoSimulado(ctx, `oc config ${ctx.args[0]}`);
+  },
   debug,
   'cluster-info': () => ok(`Kubernetes control plane is running at ${SERVER}\n\nTo further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.\n`),
   events: (ctx) => get({ ...ctx, args: ['events', ...ctx.args] }),
@@ -1702,13 +1767,15 @@ export async function oc(ctx) {
     throw naoSimulado(ctx, `oc ${sub} --help`);
   }
   const sessao = ctx.env.session.user;
-  if (!sessao && !['login', 'version', 'logout'].includes(sub)) throw erro('error: You must be logged in to the server (Unauthorized)');
+  if (!sessao && !['login', 'version', 'logout', 'completion', 'config'].includes(sub)) throw erro('error: You must be logged in to the server (Unauthorized)');
   const real = ctx.env.clusterReal || ctx.env.cluster;
   if ((como || comoGrupos.length) && !pode(real, sessao, 'impersonate', como ? 'users' : 'groups', '', null, como || comoGrupos[0])) {
     throw erro(`Error from server (Forbidden): ${como ? 'users' : 'groups'} "${como || comoGrupos[0]}" is forbidden: User "${sessao}" cannot impersonate resource "${como ? 'users' : 'groups'}" in API group "" at the cluster scope`);
   }
   const contexto = sessao ? comUsuario(ctx, como || sessao, comoGrupos) : ctx;
-  return fn({ ...contexto, args });
+  const r = await fn({ ...contexto, args });
+  registraContexto(ctx.env);
+  return r;
 }
 
 export const OC_SUBS = Object.keys(SUBS).sort();

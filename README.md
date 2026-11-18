@@ -10,7 +10,14 @@ com `oc` e uma correção item a item (`lab grade`).
 O cluster é **simulado em JavaScript dentro do navegador**. É gratuito, roda offline e não
 exige OpenShift, Docker nem conta Red Hat.
 
-> Os 10 capítulos e o modo prova estão jogáveis. Veja [Estado atual](#estado-atual).
+Há duas trilhas, escolhidas no seletor **EX280 | EX180** do topo da tela:
+
+- **EX280** (Red Hat Certified OpenShift Administrator): 10 capítulos e 2 simulados, baseados
+  no curso DO280 4.22.
+- **EX180** (Red Hat Certified Technologist in OpenShift): 6 capítulos e 2 simulados,
+  baseados no curso DO180 4.22. Veja [Trilha EX180](#trilha-ex180).
+
+O XP e o progresso são os mesmos nas duas trilhas; trocar de trilha não perde nada.
 
 ## Como rodar
 
@@ -165,6 +172,29 @@ A instalação de operators pelo console web não é simulada; o jogo cobre o ca
 - **Rumo à 4.19:** `apirequestcounts`, admin-ack para APIs removidas, troca de canal e atualização de minor.
 - **Um canal à frente:** troca de canal de um operator com aprovação manual.
 - **Prova oral da Plataforma:** cinco perguntas sobre canais, rollback, EUS e atualização de operators.
+
+## Trilha EX180
+
+Objetivos da versão EX180V422K, com o curso DO180 4.22 como base:
+
+| Capítulo | Conteúdo | Missões |
+|---|---|---|
+| 1. Cluster e CLI | Instalar o `oc` pela rota de downloads, `oc config`, inspecionar recursos, saúde do cluster, `oc adm must-gather` e `oc adm inspect` | 4 |
+| 2. Contêineres e pods | `oc run`, `oc exec`, `oc cp`, imagens por digest (`skopeo`, `oc image info`), troubleshooting | 3 |
+| 3. Implantar e expor | `oc new-app` com imagem e template, deployments, jobs e cron jobs, DNS de services, `oc scale` e routes | 5 |
+| 4. Configuração e dados | Config maps e secrets, PVC, storage classes (RWO e RWX), stateful sets | 4 |
+| 5. Confiabilidade | Liveness, readiness e startup probes, requests, limits e OOMKilled, HPA com gerador de carga | 4 |
+| 6. Atualizações | `oc set image`, histórico de rollout, image streams, `oc tag`, `oc set image-lookup` e gatilhos de imagem | 3 |
+
+Os simulados da EX180 têm 11 tarefas e 2 horas, a duração informada na
+[página oficial da prova](https://www.redhat.com/en/services/training/ex180-red-hat-certified-technologist-in-openshift-exam).
+A Red Hat não publica a nota de corte da EX180; o jogo usa 210 de 300, como na EX280.
+
+Para essa trilha, o simulador ganhou storage classes com provisionamento dinâmico (a padrão
+liga o volume no primeiro consumidor e só aceita RWO; a NFS aceita RWX), volumes que guardam
+os arquivos entre pods, stateful sets, probes que matam e reiniciam o contêiner, OOMKilled,
+agendamento pela soma dos requests, HPA e image streams com gatilhos. Só a inspeção pelo
+console web fica de fora.
 
 ## Cobertura dos objetivos oficiais
 

@@ -4,6 +4,7 @@ import { HOME } from './fs.js';
 import { ApiError } from './cluster.js';
 import { builtins } from './builtins.js';
 import { oc, skopeo } from './oc/index.js';
+import { tar, chmod, which, sudo, source, file, noPath, BINARIO_OC, PATH_PADRAO } from './arquivos.js';
 import { curl } from './curl.js';
 import { helm } from './helm.js';
 import { htpasswd } from './rbac.js';
@@ -69,9 +70,9 @@ export class Shell {
   constructor(env) {
     this.env = env;
     this.cwd = HOME;
-    this.vars = { HOME, USER: 'student', HOSTNAME: 'workstation', '?': '0' };
+    this.vars = { HOME, USER: 'student', HOSTNAME: 'workstation', PATH: PATH_PADRAO, '?': '0' };
     this.history = [];
-    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl, helm, htpasswd, openssl, nc, ncat: nc, mysql, mariadb: mysql, psql, ssh };
+    this.cmds = { ...builtins, oc, kubectl: oc, skopeo, curl, helm, htpasswd, openssl, nc, ncat: nc, mysql, mariadb: mysql, psql, ssh, tar, chmod, which, sudo, source, '.': source, file };
     this.pod = null; // contexto do contêiner quando se está dentro de `oc rsh`
     this.salvo = null;
   }
@@ -89,10 +90,16 @@ export class Shell {
   saiPod(code = 0) {
     if (!this.pod) return;
     if (this.pod.naoInterativo) throw new SaidaPod(code);
+    const aoSair = this.pod.aoSair;
     Object.assign(this, this.salvo);
     this.pod = null;
     this.salvo = null;
     this.vars['?'] = String(code);
+    // `oc run --rm -it`: o pod é apagado quando a sessão termina.
+    if (aoSair) {
+      this.env.write?.(code ? `exit\n${aoSair()}` : `exit\n${aoSair()}`);
+      return;
+    }
     if (this.salvoHost) {
       this.salvoHost = false;
       this.env.write?.('logout\nConnection to utility closed.\n');
@@ -406,7 +413,22 @@ export class Shell {
     }
     if (!argv.length) return { code: 0 };
     // Dentro do contêiner, /bin/ls e /usr/bin/ls são o mesmo `ls`.
-    const nome = this.pod ? argv[0].replace(/^(\/usr)?\/s?bin\//, '') : argv[0];
+    let nome = this.pod ? argv[0].replace(/^(\/usr)?\/s?bin\//, '') : argv[0];
+    // O `oc` baixado do cluster: `./oc`, `~/bin/oc` ou pelo PATH.
+    if (!this.pod) {
+      const fs = this.env.fs;
+      if (nome.includes('/')) {
+        const p = fs.resolve(this.cwd, nome);
+        if (fs.isFile(p) && fs.read(p) === BINARIO_OC) nome = 'oc';
+        else if (fs.isDir(p)) return { err: `bash: ${argv[0]}: Is a directory\n`, code: 126 };
+        else if (fs.isFile(p)) return { err: `bash: ${argv[0]}: Permission denied\n`, code: 126 };
+        else if (/^(\/usr)?\/s?bin\//.test(nome) && this.cmds[nome.split('/').pop()]) nome = nome.split('/').pop();
+        else return { err: `bash: ${argv[0]}: No such file or directory\n`, code: 127 };
+      } else if ((nome === 'oc' || nome === 'kubectl') && this.env.cluster.side?.semOc) {
+        const p = noPath(this, fs, 'oc');
+        if (!p || fs.read(p) !== BINARIO_OC) return { err: `bash: ${nome}: command not found\n`, code: 127 };
+      }
+    }
     const fn = this.cmds[nome];
     if (!fn) return { err: `${this.pod ? 'sh' : 'bash'}: ${argv[0]}: command not found\n`, code: 127 };
     try {

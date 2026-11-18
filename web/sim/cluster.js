@@ -1,6 +1,9 @@
 // Armazenamento de recursos do cluster simulado: CRUD, validação, valores
 // padrão e relógio. As regras de comportamento ficam em controllers.js.
 import { clone, uuid, b64 } from './util.js';
+import { padroesSts } from './sts.js';
+import { padroesHpa } from './hpa.js';
+import { resolveNomeCurto } from './imagestreams.js';
 import { kindOf, kindDoObjeto } from './resources.js';
 import { admite, padroesLimitRange } from './quota.js';
 import { cron } from './jobs.js';
@@ -118,6 +121,16 @@ export class Cluster {
       throw invalido(o, 'spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable');
     }
     if (o.kind === 'Job' && o.spec.completions !== atual.spec.completions) throw invalido(o, `spec.completions: Invalid value: ${o.spec.completions}: field is immutable`);
+    if (o.kind === 'StatefulSet') {
+      const fixo = (x) => JSON.stringify({ ...x.spec, replicas: 0, ordinals: 0, template: 0, updateStrategy: 0, persistentVolumeClaimRetentionPolicy: 0, minReadySeconds: 0 });
+      if (fixo(o) !== fixo(atual)) throw invalido(o, "spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'revisionHistoryLimit', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden");
+    }
+    if (o.kind === 'PersistentVolumeClaim') {
+      const fixo = (x) => JSON.stringify({ ...x.spec, resources: 0, volumeName: 0 });
+      if (fixo(o) !== fixo(atual)) throw invalido(o, 'spec: Forbidden: spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims');
+      o.spec.volumeName = atual.spec.volumeName;
+      o.status = atual.status;
+    }
     o.metadata.uid = atual.metadata.uid;
     o.metadata.creationTimestamp = atual.metadata.creationTimestamp;
     o.metadata.resourceVersion = String(1000 + this.seq++);
@@ -132,6 +145,7 @@ export class Cluster {
     const o = this.must(kind, nome, ns);
     this.objs.delete(this.chave(k, ns, nome));
     delete this.side[o.metadata.uid];
+    if (this.side.pods) delete this.side.pods[o.metadata.uid];
     for (const outro of [...this.objs.values()]) {
       const filho = (outro.metadata.ownerReferences || []).some((r) => r.uid === o.metadata.uid);
       const doNamespace = k.kind === 'Namespace' && outro.metadata.namespace === nome;
@@ -193,7 +207,7 @@ export class Cluster {
 
   validar(o) {
     const nome = o.metadata.name;
-    if (!/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/.test(nome) && !['User', 'Group', 'Identity', 'ClusterRole', 'ClusterRoleBinding', 'Role', 'RoleBinding', 'SecurityContextConstraints'].includes(o.kind)) {
+    if (!/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/.test(nome) && !['User', 'Group', 'Identity', 'ClusterRole', 'ClusterRoleBinding', 'Role', 'RoleBinding', 'SecurityContextConstraints', 'ImageStreamTag'].includes(o.kind)) {
       throw invalido(o, `metadata.name: Invalid value: "${nome}": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character`);
     }
     const conteineres = (spec, caminho) => {
@@ -209,7 +223,7 @@ export class Cluster {
       });
     };
     if (o.kind === 'Pod') conteineres(o.spec, 'spec');
-    if (o.kind === 'Deployment' || o.kind === 'ReplicaSet') {
+    if (o.kind === 'Deployment' || o.kind === 'ReplicaSet' || o.kind === 'StatefulSet') {
       const sel = o.spec?.selector?.matchLabels;
       if (!sel) throw invalido(o, 'spec.selector: Required value');
       const rotulos = o.spec.template?.metadata?.labels || {};
@@ -226,6 +240,12 @@ export class Cluster {
       if (!['OnFailure', 'Never'].includes(rp)) throw invalido(o, `${caminho}.spec.restartPolicy: ${rp ? `Unsupported value: "${rp}"` : 'Required value'}: supported values: "OnFailure", "Never"`);
     }
     if (o.kind === 'CronJob' && !cron(o.spec?.schedule || '')) throw invalido(o, `spec.schedule: Invalid value: "${o.spec?.schedule ?? ''}": ${o.spec?.schedule ? 'invalid schedule format' : 'Required value'}`);
+    if (o.kind === 'HorizontalPodAutoscaler') {
+      if (!o.spec?.scaleTargetRef?.name) throw invalido(o, 'spec.scaleTargetRef.name: Required value');
+      if (!o.spec.maxReplicas) throw invalido(o, 'spec.maxReplicas: Required value');
+      if (o.spec.minReplicas > o.spec.maxReplicas) throw invalido(o, `spec.maxReplicas: Invalid value: ${o.spec.maxReplicas}: must be greater than or equal to \`minReplicas\``);
+    }
+    if (o.kind === 'PersistentVolumeClaim' && !o.spec?.resources?.requests?.storage) throw invalido(o, 'spec.resources[storage]: Required value');
     if (o.kind === 'Service' && o.spec?.type !== 'ExternalName' && !o.spec?.ports?.length) throw invalido(o, 'spec.ports: Required value');
     if (o.kind === 'Route' && !o.spec?.to?.name) throw invalido(o, 'spec.to.name: Required value');
     if (o.kind === 'Route' && o.spec.tls?.termination === 'passthrough' && (o.spec.tls.certificate || o.spec.tls.key)) throw invalido(o, 'spec.tls.certificate: Invalid value: "redacted certificate data": passthrough termination does not support certificates');
@@ -281,13 +301,19 @@ export class Cluster {
     }
     if (o.kind === 'LimitRange') padroesLimitRange(o);
     if (o.kind === 'PersistentVolumeClaim') {
-      // Provisionamento dinâmico: o claim já nasce ligado a um volume.
+      // O vínculo com um volume fica com o controller de storage (storage.js).
       o.spec ??= {};
-      o.spec.storageClassName ??= 'lvms-vg1';
+      if (o.spec.storageClassName === undefined) {
+        const padrao = this.list('StorageClass').find((s) => s.metadata.annotations?.['storageclass.kubernetes.io/is-default-class'] === 'true');
+        if (padrao) o.spec.storageClassName = padrao.metadata.name;
+      }
       o.spec.volumeMode ??= 'Filesystem';
-      o.spec.volumeName ??= `pvc-${(o.metadata.uid || uuid(`${o.metadata.namespace}/${o.metadata.name}`)).slice(0, 36)}`;
-      o.status = { phase: 'Bound', accessModes: o.spec.accessModes || ['ReadWriteOnce'], capacity: { storage: o.spec.resources?.requests?.storage || '1Gi' } };
+      o.spec.accessModes ??= ['ReadWriteOnce'];
+      o.status ??= { phase: 'Pending' };
     }
+    if (o.kind === 'StatefulSet') padroesSts(o);
+    if (o.kind === 'HorizontalPodAutoscaler') padroesHpa(o);
+    if (o.kind === 'Pod') for (const ct of o.spec?.containers || []) ct.image = resolveNomeCurto(this, o.metadata.namespace, ct.image);
     if (o.kind === 'Job') {
       Object.assign(o.spec, { completions: o.spec.completions ?? 1, parallelism: o.spec.parallelism ?? 1, backoffLimit: o.spec.backoffLimit ?? 6 });
       o.status ??= {};

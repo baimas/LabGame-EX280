@@ -1,5 +1,5 @@
 // Interface do jogo: lista de missões, chamado, terminal, editor e correção.
-import { CHAPTERS, MISSIONS, EXAMS, byId, chapterOf, objective } from './missions/index.js';
+import { CHAPTERS, MISSIONS, EXAMS, TRILHAS, trilha, byId, chapterOf, objective } from './missions/index.js';
 import { notaDoExame, CORTE, NOTA_MAXIMA } from './missions/exames.js';
 import { DOCS, GUIAS, linkGuia, indiceDocs, VERSAO_DOCS } from './missions/docs-oficiais.js';
 import { startMission, grade, score, level, HINT_COST } from './engine/game.js';
@@ -19,7 +19,7 @@ const TEXTOS = {
     terminalParado: 'Escolha uma missão na lista e clique em "Iniciar missão" para ligar o terminal.\r\n',
     pronto: (id) => `Ambiente da missão ${id} preparado. Digite "help" para ver os comandos simulados.\n\n`,
     retomado: (id) => `Missão ${id} retomada de onde você parou.\n\n`,
-    bemVindo: 'Bem-vindo ao LabGame EX280',
+    bemVindo: (p) => `Bem-vindo ao LabGame ${p}`,
     intro: [
       'Você é o novo administrador OpenShift da Nimbus Tecnologia. Cada chamado é um lab no formato da prova: uma especificação do que precisa estar pronto, sem o passo a passo.',
       'O cluster é simulado dentro do navegador. Não há nada para instalar e nada sai da sua máquina.',
@@ -28,9 +28,9 @@ const TEXTOS = {
     limite: 'Simulador não é cluster: ele cobre os comandos e regras que a prova cobra, e avisa quando um comando ainda não é simulado. Quando estiver confiante, faça um simulado no modo prova.',
     nota: 'Nota', xp: 'XP', de: 'de', melhor: 'melhor resultado',
     docsTitulo: `Procurar na documentação oficial (${'4.22'})`, docsGuia: 'Guia', docsTermos: 'Procure (Ctrl+F) por', docsComo: 'Abra o guia em página única e use a busca do navegador, como na prova. A dica não custa XP.', docsProva: 'Na prova você tem a documentação do produto, sem dicas. Treine a busca no índice:',
-    modoProva: 'Modo prova', provaDesc: '3 horas · todos os domínios · sem dicas', iniciarProva: 'Começar prova', entregar: 'Entregar prova', abandonar: 'Abandonar',
+    modoProva: 'Modo prova', provaDesc: (h) => `${h} horas · todos os domínios · sem dicas`, trocaTrilha: 'Prova que você está estudando', cursoBase: (c) => `Missões baseadas no curso ${c} 4.22 e nos objetivos oficiais da prova.`, iniciarProva: 'Começar prova', entregar: 'Entregar prova', abandonar: 'Abandonar',
     confirmaEntregar: 'Entregar a prova agora? Depois disso a nota é calculada e não dá mais para mexer.', confirmaAbandonar: 'Abandonar a prova? Nada será corrigido.',
-    regrasProva: ['Todas as tarefas rodam no mesmo cluster. Faça na ordem que quiser.', 'Não há dicas, solução nem `lab grade`: a correção só acontece na entrega.', 'Quando o tempo acabar, a prova é entregue sozinha.', `Nota de 0 a ${NOTA_MAXIMA}; aprovação a partir de ${CORTE}, como na EX280.`, 'As configurações precisam estar valendo no fim: o que só existe em arquivo não conta.'],
+    regrasProva: ['Todas as tarefas rodam no mesmo cluster. Faça na ordem que quiser.', 'Não há dicas, solução nem `lab grade`: a correção só acontece na entrega.', 'Quando o tempo acabar, a prova é entregue sozinha.', `Nota de 0 a ${NOTA_MAXIMA}; aprovação a partir de ${CORTE}.`, 'As configurações precisam estar valendo no fim: o que só existe em arquivo não conta.'],
     tarefa: 'Tarefa', restante: 'restante', aprovadoProva: 'Aprovado', reprovadoProva: 'Reprovado', porDominio: 'Desempenho por domínio', porTarefa: 'Tarefas',
     semGrade: 'lab grade não está disponível no modo prova. Entregue a prova para ver a nota.\n', melhorNota: 'melhor nota', tempoEsgotado: 'Tempo esgotado: a prova foi entregue.', refazer: 'Fazer de novo', corte: 'aprovação a partir de',
   },
@@ -44,7 +44,7 @@ const TEXTOS = {
     terminalParado: 'Pick a mission from the list and click "Start mission" to power on the terminal.\r\n',
     pronto: (id) => `Environment for mission ${id} is ready. Type "help" to list the simulated commands.\n\n`,
     retomado: (id) => `Mission ${id} resumed where you left off.\n\n`,
-    bemVindo: 'Welcome to LabGame EX280',
+    bemVindo: (p) => `Welcome to LabGame ${p}`,
     intro: [
       'You are the new OpenShift administrator at Nimbus Tecnologia. Each ticket is a lab in the exam format: a specification of what must be in place, with no step-by-step.',
       'The cluster is simulated inside the browser. There is nothing to install and nothing leaves your machine.',
@@ -53,9 +53,9 @@ const TEXTOS = {
     limite: 'A simulator is not a cluster: it covers the commands and rules the exam asks for, and tells you when a command is not simulated yet. When you feel ready, take a practice exam in exam mode.',
     nota: 'Score', xp: 'XP', de: 'of', melhor: 'best result',
     docsTitulo: `Search the official documentation (${'4.22'})`, docsGuia: 'Guide', docsTermos: 'Search (Ctrl+F) for', docsComo: 'Open the single-page guide and use the browser search, as in the exam. This hint costs no XP.', docsProva: 'In the exam you have the product documentation, without hints. Practice searching from the index:',
-    modoProva: 'Exam mode', provaDesc: '3 hours · every domain · no hints', iniciarProva: 'Start exam', entregar: 'Submit exam', abandonar: 'Abandon',
+    modoProva: 'Exam mode', provaDesc: (h) => `${h} hours · every domain · no hints`, trocaTrilha: 'Exam you are studying for', cursoBase: (c) => `Missions based on the ${c} 4.22 course and the official exam objectives.`, iniciarProva: 'Start exam', entregar: 'Submit exam', abandonar: 'Abandon',
     confirmaEntregar: 'Submit the exam now? The score is calculated and nothing else can be changed.', confirmaAbandonar: 'Abandon the exam? Nothing will be graded.',
-    regrasProva: ['Every task runs on the same cluster. Work in any order you like.', 'There are no hints, solution, or `lab grade`: grading only happens when you submit.', 'When time runs out, the exam is submitted automatically.', `Score from 0 to ${NOTA_MAXIMA}; passing from ${CORTE}, as in the EX280.`, 'Configuration must be in effect at the end: what only exists in a file does not count.'],
+    regrasProva: ['Every task runs on the same cluster. Work in any order you like.', 'There are no hints, solution, or `lab grade`: grading only happens when you submit.', 'When time runs out, the exam is submitted automatically.', `Score from 0 to ${NOTA_MAXIMA}; passing from ${CORTE}.`, 'Configuration must be in effect at the end: what only exists in a file does not count.'],
     tarefa: 'Task', restante: 'left', aprovadoProva: 'Passed', reprovadoProva: 'Failed', porDominio: 'Performance by domain', porTarefa: 'Tasks',
     semGrade: 'lab grade is not available in exam mode. Submit the exam to see your score.\n', melhorNota: 'best score', tempoEsgotado: 'Time is up: the exam was submitted.', refazer: 'Take it again', corte: 'passing from',
   },
@@ -171,6 +171,7 @@ function retomar() {
     ativa = { missao, world, dicas: s.dicas, tentativas: s.tentativas, viuSolucao: s.viuSolucao, segundos: s.segundos, resultado: s.resultado, entregue: s.entregue };
     ligaLab(ativa);
     selecionada = missao;
+    if (missao.trilha && missao.trilha !== progress.trilha) progress.trilha = missao.trilha;
     if (ativa.entregue) term.detach('');
     else term.attach(world, T().retomado(missao.id));
   } catch (e) {
@@ -220,6 +221,11 @@ function desenhaTopo() {
   document.documentElement.lang = progress.lang;
   $('subtitulo').textContent = t.subtitulo;
   $('btn-idioma').textContent = t.idioma;
+  const tr = trilha(progress.trilha);
+  $('marca-nome').textContent = `LabGame ${tr.nome}`;
+  document.title = `LabGame ${tr.nome}`;
+  $('trilhas').setAttribute('aria-label', t.trocaTrilha);
+  $('trilhas').innerHTML = TRILHAS.map((x) => `<button type="button" class="trilha${x.id === tr.id ? ' ativa' : ''}" data-trilha="${x.id}" aria-pressed="${x.id === tr.id}" title="${esc(x.titulo[L()])}">${x.nome}</button>`).join('');
   $('editor-salvar').textContent = t.salvar;
   $('editor-cancelar').textContent = t.cancelar;
   $('editor-dica').textContent = t.editorDica;
@@ -232,14 +238,16 @@ function desenhaTopo() {
 
 function desenhaLista() {
   const t = T();
-  let html = `<div class="capitulo"><h2><span>◆ ${t.modoProva}</span><span></span></h2><p>${t.provaDesc}</p></div>`;
-  for (const ex of EXAMS) {
+  const tr = trilha(progress.trilha);
+  const exames = EXAMS.filter((ex) => ex.trilha === tr.id);
+  let html = `<div class="capitulo"><h2><span>◆ ${t.modoProva}</span><span></span></h2><p>${t.provaDesc(exames[0].minutes / 60)}</p></div>`;
+  for (const ex of exames) {
     const p = progress.ofExam(ex.id);
     const classes = ['missao', 'prova', p.passou ? 'feita' : '', selecionada?.id === ex.id ? 'atual' : ''].join(' ');
     const marca = p.passou ? '✓' : ativa?.missao.id === ex.id && !ativa.entregue ? '▸' : '○';
-    html += `<button type="button" class="${classes}" data-id="${ex.id}"><span class="estado">${marca}</span><span class="nome">${esc(ex.title[L()])}</span><span class="xp">${p.tentativas ? `${p.melhor}/${NOTA_MAXIMA}` : '180 min'}</span></button>`;
+    html += `<button type="button" class="${classes}" data-id="${ex.id}"><span class="estado">${marca}</span><span class="nome">${esc(ex.title[L()])}</span><span class="xp">${p.tentativas ? `${p.melhor}/${NOTA_MAXIMA}` : `${ex.minutes} min`}</span></button>`;
   }
-  for (const cap of CHAPTERS) {
+  for (const cap of tr.capitulos) {
     const feitas = cap.missions.filter((m) => progress.of(m.id).done).length;
     html += `<div class="capitulo${cap.missions.length ? '' : ' vazio'}"><h2><span>${esc(cap.id.slice(1))} · ${esc(cap.title[L()])}</span><span>${cap.missions.length ? `${feitas}/${cap.missions.length}` : ''}</span></h2><p>${esc(cap.domain[L()])}</p></div>`;
     if (!cap.missions.length) html += `<div class="em-breve">${t.emBreve}</div>`;
@@ -259,7 +267,8 @@ function desenhaChamado() {
   const el = $('chamado');
   const m = selecionada;
   if (!m) {
-    el.innerHTML = `<div class="boas-vindas"><h1>${t.bemVindo}</h1>${t.intro.map((p) => `<p>${rico(p)}</p>`).join('')}<ul>${t.regras.map((r) => `<li>${rico(r)}</li>`).join('')}</ul><p class="aviso">${rico(t.limite)}</p></div>`;
+    const tr = trilha(progress.trilha);
+    el.innerHTML = `<div class="boas-vindas"><h1>${esc(t.bemVindo(tr.nome))}</h1><p><b>${esc(tr.titulo[L()])}</b> · ${esc(t.cursoBase(tr.curso))}</p>${t.intro.map((p) => `<p>${rico(p)}</p>`).join('')}<ul>${t.regras.map((r) => `<li>${rico(r)}</li>`).join('')}</ul><p class="aviso">${rico(t.limite)}</p></div>`;
     return;
   }
   if (m.exam) return desenhaProva(el, m);
@@ -297,7 +306,7 @@ function desenhaProva(el, m) {
   const emCurso = ativa?.missao.id === m.id ? ativa : null;
   const p = progress.ofExam(m.id);
   let html = `<h1>${esc(m.title[L()])}</h1>`;
-  html += `<div class="meta"><span>${t.tempo}: <b>180 ${t.min}</b></span><span>${t.tarefa}s: <b>${m.partes.length}</b></span><span>${t.nota}: <b>0–${NOTA_MAXIMA}</b>, ${t.corte} ${CORTE}</span>${p.tentativas ? `<span>${t.melhorNota}: <b>${p.melhor}</b></span>` : ''}</div>`;
+  html += `<div class="meta"><span>${t.tempo}: <b>${m.minutes} ${t.min}</b></span><span>${t.tarefa}s: <b>${m.partes.length}</b></span><span>${t.nota}: <b>0–${NOTA_MAXIMA}</b>, ${t.corte} ${CORTE}</span>${p.tentativas ? `<span>${t.melhorNota}: <b>${p.melhor}</b></span>` : ''}</div>`;
   html += `<p class="historia">${rico(m.story[L()])}</p>`;
   if (emCurso?.entregue && emCurso.resultado?.exame) {
     const r = emCurso.resultado.exame;
@@ -393,6 +402,16 @@ $('chamado').addEventListener('click', async (e) => {
     salvaSessao();
     desenha();
   }
+});
+
+$('trilhas').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-trilha]');
+  if (!b || b.dataset.trilha === progress.trilha) return;
+  progress.trilha = b.dataset.trilha;
+  // A missão em andamento continua; só a lista muda.
+  if (selecionada && selecionada.trilha !== progress.trilha) selecionada = ativa && ativa.missao.trilha === progress.trilha ? ativa.missao : null;
+  desenha();
+  $('chamado').scrollTop = 0;
 });
 
 $('btn-idioma').addEventListener('click', () => {

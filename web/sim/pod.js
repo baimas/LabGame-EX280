@@ -9,6 +9,8 @@ import { DNS_IP, KUBE_IP } from './net.js';
 import { KUBE_CA, SERVICE_CA, openssl } from './tls.js';
 import { nc, mysql, psql } from './tcp.js';
 import { uidDoProjeto, uidEfetivo } from './scc.js';
+import { dadosDoVolume } from './storage.js';
+import { tar } from './arquivos.js';
 
 const WORKDIR = '/opt/app-root/src';
 const SA = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -31,16 +33,42 @@ class PodFS extends FS {
   write(p, conteudo) {
     this.podeGravar(p);
     super.write(p, conteudo);
+    const a = this.armazem(p);
+    if (a) {
+      a.store.files[a.rel] = conteudo;
+      // Quem gravou: permite saber se o arquivo sobreviveu ao pod.
+      (a.store.autor ??= {})[a.rel] = this.podUid;
+    }
   }
 
   mkdir(p, pais) {
     if (!this.exists(p)) this.podeGravar(p);
+    const novos = [];
+    for (let x = p; x !== '/' && !this.exists(x); x = this.pai(x)) novos.push(x);
     super.mkdir(p, pais);
+    for (const x of novos) {
+      const a = this.armazem(x);
+      if (a && a.rel && !a.store.dirs.includes(a.rel)) a.store.dirs.push(a.rel);
+    }
+  }
+
+  // Onde fica guardado o que se grava em `p`: o volume persistente montado
+  // ali ou a camada gravável do contêiner (que some com o pod).
+  armazem(p) {
+    if (this.montando || !this.armazens) return null;
+    const a = this.armazens.filter((x) => p === x.base || p.startsWith(x.base === '/' ? '/' : x.base + '/')).sort((x, y) => y.base.length - x.base.length)[0];
+    if (!a) return null;
+    return { store: a.store, rel: a.base === '/' ? p : p.slice(a.base.length).replace(/^\//, '') };
   }
 
   rm(p, recursivo) {
     if (this.exists(p)) this.podeGravar(p);
     super.rm(p, recursivo);
+    const a = this.armazem(p);
+    if (!a) return;
+    const casa = (x) => x === a.rel || (a.rel ? x.startsWith(a.rel + '/') : true);
+    for (const k of Object.keys(a.store.files)) if (casa(k)) delete a.store.files[k];
+    a.store.dirs = a.store.dirs.filter((d) => !casa(d));
   }
 }
 
@@ -51,6 +79,7 @@ function montaFs(c, pod, ct) {
   const ns = pod.metadata.namespace;
   const sa = pod.spec.serviceAccountName || 'default';
   fs.montando = true;
+  const armazens = [];
   const put = (p, t) => fs.put(p, t);
   const uid = uidDoProjeto(ns);
   put('/etc/hostname', pod.metadata.name + '\n');
@@ -86,8 +115,21 @@ function montaFs(c, pod, ct) {
       fs.mkdir(base, true);
       if (!m.readOnly) fs.gravaveis.push(base);
       else fs.somenteLeitura.push(base);
+      // Volume persistente: os arquivos ficam no volume, não no pod.
+      const store = v.persistentVolumeClaim ? dadosDoVolume(c, ns, v.persistentVolumeClaim.claimName) : v.emptyDir ? (((c.side.pods ??= {})[pod.metadata.uid] ??= {}).emptyDir ??= {})[v.name] ??= { files: {}, dirs: [] } : null;
+      if (store) armazens.push({ base, store });
     }
   }
+  // Camada gravável do contêiner: dura enquanto o pod existir.
+  const camada = ((((c.side.pods ??= {})[pod.metadata.uid] ??= {}).camadas ??= {})[ct.name] ??= { files: {}, dirs: [] });
+  armazens.push({ base: '/', store: camada });
+  for (const a of armazens) {
+    const abs = (rel) => (a.base === '/' ? rel : `${a.base}/${rel}`);
+    for (const d of a.store.dirs) fs.mkdir(abs(d), true);
+    for (const [rel, conteudo] of Object.entries(a.store.files)) fs.put(abs(rel), conteudo);
+  }
+  fs.armazens = armazens;
+  fs.podUid = pod.metadata.uid;
   fs.montando = false;
   return fs;
 }
@@ -117,6 +159,22 @@ function comandos(contexto) {
     uname: ({ args }) => ok(args.includes('-a') ? `Linux ${pod.metadata.name} 5.14.0-427.el9.x86_64 #1 SMP x86_64 x86_64 x86_64 GNU/Linux\n` : 'Linux\n'),
     ps: () => ok(`    PID TTY          TIME CMD\n      1 ?        00:00:02 ${processo}\n     42 pts/0    00:00:00 sh\n     57 pts/0    00:00:00 ps\n`),
     curl,
+    tar,
+    df: () => {
+      const linhas = [['Filesystem', 'Size', 'Used', 'Avail', 'Use%', 'Mounted on'], ['overlay', '120G', '38G', '83G', '32%', '/']];
+      for (const m of ct.volumeMounts || []) {
+        const v = (pod.spec.volumes || []).find((x) => x.name === m.name);
+        if (v?.persistentVolumeClaim) {
+          const pvc = env.cluster.get('PersistentVolumeClaim', v.persistentVolumeClaim.claimName, pod.metadata.namespace);
+          const sc = pvc?.spec.storageClassName === 'nfs-storage';
+          linhas.push([sc ? `192.168.50.254:/exports-ocp4/${pod.metadata.namespace}-${v.persistentVolumeClaim.claimName}` : `/dev/topolvm/${(pvc?.spec.volumeName || 'pending').slice(4, 40)}`, pvc?.status?.capacity?.storage?.replace('i', '') || '1G', '33M', '974M', '4%', m.mountPath]);
+        } else if (v?.configMap || v?.secret) linhas.push(['tmpfs', '30G', '4.0K', '30G', '1%', m.mountPath]);
+        else linhas.push(['/dev/sda4', '120G', '38G', '83G', '32%', m.mountPath]);
+      }
+      linhas.push(['tmpfs', '30G', '0', '30G', '0%', '/run/secrets/kubernetes.io/serviceaccount']);
+      const larg = linhas[0].map((_, i) => Math.max(...linhas.map((l) => String(l[i]).length)));
+      return ok(linhas.map((l) => l.map((x, i) => (i === 0 || i === 5 ? String(x).padEnd(larg[i]) : String(x).padStart(larg[i]))).join(' ').trimEnd()).join('\n') + '\n');
+    },
     openssl,
     nc,
     mysql,

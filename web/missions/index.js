@@ -1,5 +1,5 @@
-// Catálogo de capítulos e missões. Cada capítulo espelha um domínio dos
-// objetivos oficiais da EX280.
+// Catálogo de trilhas (EX280 e EX180), capítulos e missões. Cada capítulo
+// espelha um domínio dos objetivos oficiais da prova da trilha.
 import primeiroDia from './c0/primeiro-dia.js';
 import inventario from './c0/inventario.js';
 import plantao from './c0/plantao.js';
@@ -48,6 +48,29 @@ import zstream from './c9/zstream.js';
 import minorUp from './c9/minor.js';
 import operadorUp from './c9/operador.js';
 import quizUp from './c9/quiz.js';
+import instalarOc from './e1/instalar-oc.js';
+import inspecionar180 from './e1/inspecionar.js';
+import saude180 from './e1/saude.js';
+import suporte180 from './e1/suporte.js';
+import pods180 from './e2/pods.js';
+import imagens180 from './e2/imagens.js';
+import troubleshoot180 from './e2/troubleshoot.js';
+import imagem180 from './e3/imagem.js';
+import template180 from './e3/template.js';
+import workloads180 from './e3/workloads.js';
+import rede180 from './e3/rede.js';
+import escalar180 from './e3/escalar-expor.js';
+import config180 from './e4/config.js';
+import pvc180 from './e4/pvc.js';
+import sc180 from './e4/storageclass.js';
+import sts180 from './e4/statefulset.js';
+import probes180 from './e5/probes.js';
+import requests180 from './e5/requests.js';
+import limits180 from './e5/limits.js';
+import hpa180 from './e5/hpa.js';
+import atualizar180 from './e6/atualizar.js';
+import is180 from './e6/imagestream.js';
+import gatilho180 from './e6/gatilho.js';
 import { SIMULADOS, montaExame } from './exames.js';
 import documentacao from './c0/documentacao.js';
 import exportar from './c1/exportar.js';
@@ -55,7 +78,7 @@ import rollback from './c2/rollback.js';
 import jobMissao from './c8/job.js';
 import privilegiado from './c8/privilegiado.js';
 
-export const CHAPTERS = [
+const CAPITULOS_280 = [
   { id: 'c0', title: { pt: 'Primeiro dia', en: 'First day' }, domain: { pt: 'Gerenciar o OpenShift Container Platform', en: 'Manage OpenShift Container Platform' }, missions: [primeiroDia, inventario, imagens, plantao, saude, documentacao] },
   { id: 'c1', title: { pt: 'Gestão declarativa', en: 'Declarative management' }, domain: { pt: 'Manifestos, Kustomize, secrets e config maps', en: 'Manifests, Kustomize, secrets, and config maps' }, missions: [manifestos, configuracao, kustomizeBase, overlays, exportar] },
   { id: 'c2', title: { pt: 'Aplicações empacotadas', en: 'Packaged applications' }, domain: { pt: 'Templates, Helm, services e labels', en: 'Templates, Helm, services, and labels' }, missions: [replicasets, servicos, rollback, templates, templateProprio, helmInstall, helmUpgrade] },
@@ -68,8 +91,28 @@ export const CHAPTERS = [
   { id: 'c9', title: { pt: 'Updates', en: 'Updates' }, domain: { pt: 'Atualização do cluster e de operators', en: 'Cluster and operator updates' }, missions: [zstream, minorUp, operadorUp, quizUp] },
 ];
 
-export const MISSIONS = CHAPTERS.flatMap((c) => c.missions.map((m) => ({ ...m, chapter: c.id })));
+const CAPITULOS_180 = [
+  { id: 'e1', title: { pt: 'Cluster e CLI', en: 'Cluster and CLI' }, domain: { pt: 'Gerenciar o OpenShift: CLI, inspeção, saúde e dados de suporte', en: 'Manage OpenShift: CLI, inspection, health, and support data' }, missions: [instalarOc, inspecionar180, saude180, suporte180] },
+  { id: 'e2', title: { pt: 'Contêineres e pods', en: 'Containers and pods' }, domain: { pt: 'Pods, imagens e troubleshooting', en: 'Pods, images, and troubleshooting' }, missions: [pods180, imagens180, troubleshoot180] },
+  { id: 'e3', title: { pt: 'Implantar e expor', en: 'Deploy and expose' }, domain: { pt: 'Imagens, templates, workloads, rede e routes', en: 'Images, templates, workloads, networking, and routes' }, missions: [imagem180, template180, workloads180, rede180, escalar180] },
+  { id: 'e4', title: { pt: 'Configuração e dados', en: 'Configuration and data' }, domain: { pt: 'Config maps, secrets, PVCs, storage classes e stateful sets', en: 'Config maps, secrets, PVCs, storage classes, and stateful sets' }, missions: [config180, pvc180, sc180, sts180] },
+  { id: 'e5', title: { pt: 'Confiabilidade', en: 'Reliability' }, domain: { pt: 'Probes, requests, limits e autoscaling', en: 'Probes, requests, limits, and autoscaling' }, missions: [probes180, requests180, limits180, hpa180] },
+  { id: 'e6', title: { pt: 'Atualizações', en: 'Updates' }, domain: { pt: 'Imagens, rollouts, image streams e gatilhos', en: 'Images, rollouts, image streams, and triggers' }, missions: [atualizar180, is180, gatilho180] },
+];
+
+// As duas provas. O progresso é por missão, então trocar de trilha não perde nada.
+export const TRILHAS = [
+  { id: 'ex280', nome: 'EX280', curso: 'DO280', versao: '4.22', titulo: { pt: 'Red Hat Certified OpenShift Administrator', en: 'Red Hat Certified OpenShift Administrator' }, capitulos: CAPITULOS_280 },
+  { id: 'ex180', nome: 'EX180', curso: 'DO180', versao: '4.22', titulo: { pt: 'Red Hat Certified Technologist in OpenShift', en: 'Red Hat Certified Technologist in OpenShift' }, capitulos: CAPITULOS_180 },
+];
+for (const t of TRILHAS) for (const c of t.capitulos) c.trilha = t.id;
+
+export const CHAPTERS = TRILHAS.flatMap((t) => t.capitulos);
+export const MISSIONS = CHAPTERS.flatMap((c) => c.missions.map((m) => ({ ...m, chapter: c.id, trilha: c.trilha })));
 export const EXAMS = SIMULADOS.map((d) => montaExame(d, MISSIONS));
+export const trilha = (id) => TRILHAS.find((t) => t.id === id) || TRILHAS[0];
+export const missoesDa = (id) => MISSIONS.filter((m) => m.trilha === id);
+export const examesDa = (id) => EXAMS.filter((e) => e.trilha === id);
 export const byId = (id) => MISSIONS.find((m) => m.id === id) || EXAMS.find((m) => m.id === id);
 export const chapterOf = (id) => CHAPTERS.find((c) => c.missions.some((m) => m.id === id));
 

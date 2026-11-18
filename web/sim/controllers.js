@@ -12,6 +12,10 @@ import { updatesCtl } from './updates.js';
 import { redesCtl, problemaDeRede, ligaRedes } from './redes.js';
 import { uidEfetivo } from './scc.js';
 import { pode } from './rbac.js';
+import { storageCtl, claimPendente } from './storage.js';
+import { stsCtl } from './sts.js';
+import { hpaCtl } from './hpa.js';
+import { isCtl } from './imagestreams.js';
 
 export function reconcile(c) {
   for (let i = 0; i < 4; i++) {
@@ -19,8 +23,12 @@ export function reconcile(c) {
     redesCtl(c);
     cronCtl(c);
     jobsCtl(c);
+    isCtl(c);
+    hpaCtl(c);
     deployments(c);
     replicasets(c);
+    stsCtl(c);
+    storageCtl(c);
     pods(c);
   }
   deployments(c);
@@ -378,14 +386,18 @@ function volumeAusente(c, pod) {
   return null;
 }
 
-function naoAgendavel(pod, node) {
+function naoAgendavel(c, pod, node) {
   const sufixo = ' preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.';
+  const claim = claimPendente(c, pod);
+  if (claim) return claim;
   for (const [k, v] of Object.entries(pod.spec.nodeSelector || {})) {
     if (node.metadata.labels?.[k] !== v) return `0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector.${sufixo}`;
   }
+  // Soma os requests dos pods que já estão no nó com os do pod novo.
   let cpu = 0;
   let mem = 0;
-  for (const ct of pod.spec.containers) {
+  const outros = c.list('Pod').filter((p) => p.spec.nodeName && p !== pod && !['Succeeded', 'Failed'].includes(p.status?.phase));
+  for (const ct of [...pod.spec.containers, ...outros.flatMap((p) => p.spec.containers)]) {
     cpu += parseCpu(ct.resources?.requests?.cpu);
     mem += parseMem(ct.resources?.requests?.memory);
   }
@@ -414,6 +426,9 @@ function diagnosticar(c, pod, ct) {
   if (r.error) return { tipo: 'config', msg: r.error };
   const img = achada.image;
   const contexto = { tag: achada.tag, env: r.env, pod };
+  // `oc run -it`: o shell fica aberto enquanto a sessão está anexada.
+  if (ct.stdin && !ct.command && !ct.args) return { tipo: 'roda', logs: [] };
+  if (ct.stdin && (ct.command || ct.args)) return { tipo: 'roda', logs: [] };
   if (ct.command || ct.args) return peloComando([...(ct.command || []), ...(ct.args || [])]);
   if (img.requires && !img.requires.some((grupo) => grupo.every((v) => r.env[v]))) return { tipo: 'sai', codigo: 1, apos: 0, logs: img.crashLog };
   // Imagem que só funciona como root.
@@ -428,6 +443,11 @@ function diagnosticar(c, pod, ct) {
     return { tipo: 'roda', logs: ['[pod-watcher] using in-cluster configuration', ...alvos.map((n) => `[pod-watcher] watching ${c.list('Pod', n).length} pods in namespace ${n}`)] };
   }
   if (img.exits !== undefined) return { tipo: 'sai', codigo: img.exits, apos: 1, logs: img.logs(contexto) };
+  // Memória: a aplicação precisa de img.mem; um limite menor faz o kernel matar o processo.
+  const limite = ct.resources?.limits?.memory;
+  if (img.mem && limite && parseMem(limite) < parseMem(img.mem)) {
+    return { tipo: 'sai', codigo: 137, motivo: 'OOMKilled', apos: img.inicio ? Math.min(img.inicio, 8) : 4, logs: img.logs(contexto).slice(0, 2) };
+  }
   const tls = img.repo.includes('/nimbus/') ? tlsDaAplicacao(c, pod, ct, r.env) : null;
   if (tls?.erro) return { tipo: 'sai', codigo: 1, apos: 0, logs: [`[${img.repo.split('/').pop()}] loading TLS certificate from ${r.env.TLS_DIR}`, `[${img.repo.split('/').pop()}] FATAL: ${tls.erro}`] };
   const linhas = img.logs(contexto);
@@ -448,7 +468,7 @@ function pods(c) {
     };
 
     if (!p.spec.nodeName) {
-      const motivo = naoAgendavel(p, node);
+      const motivo = naoAgendavel(c, p, node);
       if (motivo) {
         uma('naoAgendado', () => c.event(p, 'Warning', 'FailedScheduling', motivo, 'default-scheduler'));
         p.status = { phase: 'Pending', conditions: [{ type: 'PodScheduled', status: 'False', reason: 'Unschedulable', message: motivo }] };
@@ -500,7 +520,8 @@ function pods(c) {
         });
         st.logs[n] = { linhas: d.logs || [] };
         const rodando = { ...base, ready: true, started: true, state: { running: { startedAt: c.iso(st.inicio + 2) } } };
-        if (d.tipo === 'roda' || t < 2 + d.apos) estados.push(rodando);
+        if (d.tipo === 'roda') estados.push(comProbes(c, p, ct, d, t - 2, rodando, uma));
+        else if (t < 2 + d.apos) estados.push(rodando);
         else if (politica === 'Always' || (politica === 'OnFailure' && d.codigo !== 0)) {
           uma(`volta:${n}`, () => c.event(p, 'Warning', 'BackOff', `Back-off restarting failed container ${n} in pod ${p.metadata.name}_${p.metadata.namespace}(${p.metadata.uid})`));
           const reinicios = 1 + Math.min(40, Math.floor((t - 2 - d.apos) / 20));
@@ -508,9 +529,9 @@ function pods(c) {
             ...base,
             restartCount: reinicios,
             state: { waiting: { reason: 'CrashLoopBackOff', message: `back-off 5m0s restarting failed container=${n} pod=${p.metadata.name}_${p.metadata.namespace}(${p.metadata.uid})` } },
-            lastState: { terminated: { exitCode: d.codigo, reason: d.codigo ? 'Error' : 'Completed' } },
+            lastState: { terminated: { exitCode: d.codigo, reason: d.motivo || (d.codigo ? 'Error' : 'Completed') } },
           });
-        } else estados.push({ ...base, state: { terminated: { exitCode: d.codigo, reason: d.codigo ? 'Error' : 'Completed' } } });
+        } else estados.push({ ...base, state: { terminated: { exitCode: d.codigo, reason: d.motivo || (d.codigo ? 'Error' : 'Completed') } } });
       }
     }
 
@@ -536,6 +557,102 @@ function pods(c) {
     };
     if (p.status.podIP) ligaRedes(c, p);
   }
+}
+
+// ---------------------------------------------------------------- probes
+
+const PADRAO_PROBE = { initialDelaySeconds: 0, periodSeconds: 10, timeoutSeconds: 1, successThreshold: 1, failureThreshold: 3 };
+const comPadrao = (pr) => (pr ? { ...PADRAO_PROBE, ...pr } : null);
+
+// Resultado de uma probe com a aplicação já no ar (o tempo de subida é tratado
+// à parte): null se passa, ou a mensagem de falha.
+function falhaDaProbe(pr, img, ct, ip) {
+  const porta = (x) => (typeof x === 'string' ? (ct.ports || []).find((q) => q.name === x)?.containerPort : Number(x));
+  if (pr.httpGet) {
+    const pt = porta(pr.httpGet.port);
+    const esquema = (pr.httpGet.scheme || 'HTTP').toLowerCase();
+    const caminho = pr.httpGet.path || '/';
+    if (!img.port || pt !== img.port) return `Get "${esquema}://${ip}:${pt}${caminho}": dial tcp ${ip}:${pt}: connect: connection refused`;
+    if (!(img.paths || ['/']).includes(caminho)) return 'HTTP probe failed with statuscode: 404';
+    return null;
+  }
+  if (pr.tcpSocket) {
+    const pt = porta(pr.tcpSocket.port);
+    if (!img.port || pt !== img.port) return `dial tcp ${ip}:${pt}: connect: connection refused`;
+    return null;
+  }
+  if (pr.exec) {
+    const cmd = (pr.exec.command || []).join(' ');
+    const arq = /(?:cat|test -f|ls)\s+(\S+)/.exec(cmd)?.[1];
+    if (arq && !(img.files || []).includes(arq)) return `${cmd.split(' ').pop()}: No such file or directory`;
+    return null;
+  }
+  return null;
+}
+
+// Aplica startup, liveness e readiness ao contêiner em execução. `tr` é o
+// tempo desde que o contêiner subiu pela primeira vez.
+function comProbes(c, p, ct, d, tr, rodando, uma) {
+  const img = findImage(ct.image).image || {};
+  const ip = c.side[p.metadata.uid]?.ip || p.status?.podIP || '10.8.0.1';
+  const inicio = img.inicio || 0; // segundos até a aplicação responder
+  const startup = comPadrao(ct.startupProbe);
+  const vida = comPadrao(ct.livenessProbe);
+  const prontidao = comPadrao(ct.readinessProbe);
+  const n = ct.name;
+  const evento = (chave, tipo, motivo, msg) => uma(`${chave}:${n}`, () => c.event(p, tipo, motivo, msg));
+
+  // Quando, dentro de um ciclo de vida do contêiner, ele é morto (ou nunca).
+  let morte = Infinity;
+  let falhaVida = null;
+  let iniciou = 0; // instante em que a startup probe passou
+  if (startup) {
+    const f = falhaDaProbe(startup, img, ct, ip);
+    const limite = startup.initialDelaySeconds + startup.periodSeconds * startup.failureThreshold;
+    const ok = f ? Infinity : Math.max(startup.initialDelaySeconds, Math.ceil(inicio / startup.periodSeconds) * startup.periodSeconds);
+    if (ok > limite) {
+      morte = limite;
+      falhaVida = ['Startup', f || `Get "http://${ip}:${img.port}${startup.httpGet?.path || '/'}": dial tcp ${ip}:${img.port}: connect: connection refused`];
+    } else iniciou = ok;
+  }
+  if (vida && morte === Infinity) {
+    const f = falhaDaProbe(vida, img, ct, ip);
+    const comeca = iniciou + vida.initialDelaySeconds;
+    const limite = comeca + vida.periodSeconds * vida.failureThreshold;
+    if (f) {
+      morte = limite;
+      falhaVida = ['Liveness', f];
+    } else if (inicio > comeca + vida.periodSeconds * (vida.failureThreshold - 1)) {
+      // A aplicação demora a subir e a liveness mata antes.
+      morte = limite;
+      falhaVida = ['Liveness', `Get "http://${ip}:${img.port}${vida.httpGet?.path || '/'}": dial tcp ${ip}:${img.port}: connect: connection refused`];
+    }
+  }
+  if (morte !== Infinity) {
+    const ciclo = morte + 1;
+    const reinicios = Math.floor(tr / ciclo);
+    const noCiclo = tr - reinicios * ciclo;
+    if (tr >= morte - (falhaVida[0] === 'Startup' ? startup.periodSeconds : vida.periodSeconds) * ((falhaVida[0] === 'Startup' ? startup : vida).failureThreshold - 1)) {
+      evento(`unh:${falhaVida[0]}`, 'Warning', 'Unhealthy', `${falhaVida[0]} probe failed: ${falhaVida[1]}`);
+    }
+    if (reinicios >= 1) evento('kill', 'Normal', 'Killing', `Container ${n} failed ${falhaVida[0].toLowerCase()} probe, will be restarted`);
+    const ultimo = reinicios ? { lastState: { terminated: { exitCode: 137, reason: 'Error', startedAt: c.iso(c.now - noCiclo - ciclo), finishedAt: c.iso(c.now - noCiclo) } } } : {};
+    if (reinicios >= 4 && noCiclo < 6) {
+      evento('backoff', 'Warning', 'BackOff', `Back-off restarting failed container ${n} in pod ${p.metadata.name}_${p.metadata.namespace}(${p.metadata.uid})`);
+      return { ...rodando, ready: false, started: false, restartCount: reinicios, state: { waiting: { reason: 'CrashLoopBackOff', message: `back-off 1m20s restarting failed container=${n} pod=${p.metadata.name}_${p.metadata.namespace}(${p.metadata.uid})` } }, ...ultimo };
+    }
+    return { ...rodando, ready: false, started: noCiclo >= iniciou, restartCount: reinicios, state: { running: { startedAt: c.iso(c.now - noCiclo) } }, ...ultimo };
+  }
+  if (!prontidao) return { ...rodando, started: tr >= iniciou, ready: !startup || tr >= iniciou };
+  const f = falhaDaProbe(prontidao, img, ct, ip);
+  const comeca = iniciou + prontidao.initialDelaySeconds;
+  if (f) {
+    if (tr >= comeca) evento('unh:Readiness', 'Warning', 'Unhealthy', `Readiness probe failed: ${f}`);
+    return { ...rodando, ready: false };
+  }
+  // Passa na primeira verificação depois que a aplicação respondeu.
+  const pronta = tr >= Math.max(comeca, Math.ceil(Math.max(0, inicio - comeca) / prontidao.periodSeconds) * prontidao.periodSeconds + comeca);
+  return { ...rodando, ready: pronta };
 }
 
 // Pods (prontos) selecionados por um service.

@@ -7,13 +7,31 @@ export const CORTE = 210;
 export const SIMULADOS = [
   {
     id: 'prova-a',
+    trilha: 'ex280',
     title: { pt: 'Simulado A', en: 'Practice exam A' },
     partes: ['c0-plantao', 'c1-manifestos', 'c1-kustomize-base', 'c2-templates', 'c2-rollback', 'c2-helm-install', 'c3-grupos', 'c4-edge', 'c4-netpol-isola', 'c5-loadbalancer', 'c5-udn', 'c6-quota', 'c6-template-projeto', 'c7-instalar', 'c8-anyuid', 'c8-job', 'c8-cronjob', 'c9-zstream'],
   },
   {
     id: 'prova-b',
+    trilha: 'ex280',
     title: { pt: 'Simulado B', en: 'Practice exam B' },
     partes: ['c0-imagens', 'c1-configuracao', 'c1-exportar', 'c2-replicasets', 'c2-helm-upgrade', 'c3-usuarios', 'c4-passthrough', 'c4-service-ca', 'c5-nodeport', 'c5-metallb', 'c5-nad', 'c6-limitrange', 'c6-clusterquota', 'c7-manual', 'c8-api', 'c8-privilegiado', 'c8-scc-diagnostico', 'c9-operador'],
+  },
+  // EX180: 2 horas (página oficial). A nota de corte oficial não foi publicada;
+  // usamos 210 de 300, como na EX280.
+  {
+    id: 'prova180-a',
+    trilha: 'ex180',
+    minutos: 120,
+    title: { pt: 'Simulado EX180 A', en: 'EX180 practice exam A' },
+    partes: ['e1-saude', 'e1-suporte', 'e2-pods', 'e2-troubleshoot', 'e3-template', 'e3-escalar-expor', 'e4-config', 'e4-storageclass', 'e5-probes', 'e5-hpa', 'e6-gatilho'],
+  },
+  {
+    id: 'prova180-b',
+    trilha: 'ex180',
+    minutos: 120,
+    title: { pt: 'Simulado EX180 B', en: 'EX180 practice exam B' },
+    partes: ['e1-inspecionar', 'e2-imagens', 'e3-imagem', 'e3-rede', 'e3-workloads', 'e4-pvc', 'e4-statefulset', 'e5-requests', 'e5-limits', 'e6-imagestream', 'e6-atualizar'],
   },
 ];
 
@@ -39,13 +57,14 @@ export function montaExame(def, missoes) {
   return {
     id: def.id,
     exam: true,
-    minutes: 180,
+    trilha: def.trilha,
+    minutes: def.minutos || 180,
     xp: 0,
     difficulty: 3,
     title: def.title,
     story: {
-      pt: 'Prova prática no formato da EX280: 3 horas, um cluster só, as tarefas na ordem que você quiser. Não há dicas nem correção parcial; a nota sai quando você entregar a prova ou quando o tempo acabar.',
-      en: 'Hands-on exam in the EX280 format: 3 hours, a single cluster, tasks in any order you like. There are no hints and no partial grading; the score comes out when you submit or when time runs out.',
+      pt: `Prova prática no formato da ${def.trilha === 'ex180' ? 'EX180' : 'EX280'}: ${def.minutos === 120 ? '2 horas' : '3 horas'}, um cluster só, as tarefas na ordem que você quiser. Não há dicas nem correção parcial; a nota sai quando você entregar a prova ou quando o tempo acabar.`,
+      en: `Hands-on exam in the ${def.trilha === 'ex180' ? 'EX180' : 'EX280'} format: ${def.minutos === 120 ? '2 hours' : '3 hours'}, a single cluster, tasks in any order you like. There are no hints and no partial grading; the score comes out when you submit or when time runs out.`,
     },
     partes,
     tasks: { pt: partes.flatMap((m) => m.tasks.pt), en: partes.flatMap((m) => m.tasks.en) },

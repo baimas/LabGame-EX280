@@ -2,7 +2,7 @@
 // reprovado e, com as soluções de todas as partes, chega a 300.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EXAMS, chapterOf } from '../web/missions/index.js';
+import { EXAMS, chapterOf, trilha } from '../web/missions/index.js';
 import { startMission, grade } from '../web/engine/game.js';
 import { notaDoExame } from '../web/missions/exames.js';
 
@@ -20,6 +20,7 @@ for (const exame of EXAMS) {
     const falhas = depois.porParte.flatMap((p) => p.itens.filter((i) => !i.ok).map((i) => `${p.id}: ${i.text.pt}`));
     assert.deepEqual(falhas, []);
     assert.equal(depois.nota, 300);
-    assert.equal(depois.dominios.length, 10);
+    // Cada domínio (capítulo) da trilha aparece na nota.
+    assert.equal(depois.dominios.length, trilha(exame.trilha).capitulos.length);
   });
 }

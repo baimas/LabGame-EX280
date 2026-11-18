@@ -88,6 +88,43 @@ export const EXTRAS = {
   'Atualizar operators': 'Update operators (DO280)',
 };
 
+// Objetivos oficiais da EX180 (Red Hat Certified Technologist in OpenShift),
+// versão EX180V422K, com os rótulos das missões da trilha EX180.
+export const OFICIAIS_180 = [
+  { secao: 'Manage OpenShift Container Platform', itens: [
+    { en: 'Install and configure the OpenShift CLI tool', pt: ['Instalar e configurar a CLI do OpenShift'] },
+    { en: 'Inspect Kubernetes resources using both the CLI and the Web UI', pt: ['Inspecionar recursos do Kubernetes pela CLI e pela interface web'], parcial: { pt: 'A inspeção pela CLI é simulada; o console web não.', en: 'Inspection through the CLI is simulated; the web console is not.' } },
+    { en: 'Collect cluster support data from an OpenShift cluster for Red Hat support', pt: ['Coletar dados de suporte do cluster'] },
+  ] },
+  { secao: 'Deploy applications on Red Hat OpenShift Container Platform', itens: [
+    { en: 'Create Linux containers and Kubernetes pods', pt: ['Criar contêineres Linux e pods do Kubernetes'] },
+    { en: 'Find and inspect container images', pt: ['Encontrar e inspecionar imagens de contêiner'] },
+    { en: 'Deploy applications from an image and from a template', pt: ['Implantar aplicações a partir de uma imagem e de um template'] },
+    { en: 'Scale and expose applications to external access', pt: ['Escalar e expor aplicações para acesso externo'] },
+  ] },
+  { secao: 'Manage storage for application configuration and data', itens: [
+    { en: 'Externalize the configuration of applications', pt: ['Externalizar a configuração das aplicações'] },
+    { en: 'Provision persistent data volumes', pt: ['Provisionar volumes de dados persistentes'] },
+  ] },
+  { secao: 'Configure applications for reliability', itens: [
+    { en: 'Configure application health probes', pt: ['Configurar probes de saúde das aplicações'] },
+    { en: 'Reserve and limit compute capacity for applications', pt: ['Reservar e limitar a capacidade de computação das aplicações'] },
+    { en: 'Configure application autoscaling', pt: ['Configurar o autoscaling das aplicações'] },
+  ] },
+];
+
+// Conteúdo do curso DO180 4.22 que não está na lista da prova, mas ajuda.
+export const EXTRAS_180 = {
+  'Monitorar e avaliar a saúde do cluster': 'Monitor an OpenShift cluster and assess its health (DO180)',
+  'Solucionar problemas de contêineres e pods': 'Troubleshoot containers and pods (DO180)',
+  'Gerenciar aplicações com a API de workloads': 'Manage long-lived and short-lived applications with the Kubernetes workload API (DO180)',
+  'Usar as redes de pods e services': 'Kubernetes pod and service networks (DO180)',
+  'Escolher uma storage class': 'Select a storage class for an application (DO180)',
+  'Gerenciar armazenamento não compartilhado com stateful sets': 'Manage non-shared storage with stateful sets (DO180)',
+  'Atualizar a imagem e a configuração de aplicações': 'Update application image and settings (DO180)',
+  'Usar image streams e gatilhos de imagem': 'Reproducible deployments with image streams and image change triggers (DO180)',
+};
+
 // Rótulo da missão → texto oficial em inglês.
-export const OBJETIVOS_EN = { ...EXTRAS };
-for (const s of OFICIAIS) for (const o of s.itens) for (const pt of o.pt) OBJETIVOS_EN[pt] ??= o.en;
+export const OBJETIVOS_EN = { ...EXTRAS, ...EXTRAS_180 };
+for (const s of [...OFICIAIS, ...OFICIAIS_180]) for (const o of s.itens) for (const pt of o.pt) OBJETIVOS_EN[pt] ??= o.en;

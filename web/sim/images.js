@@ -100,6 +100,29 @@ export const IMAGES = [
     logs: () => ['[legacy-ftp] preparing /var/ftp', '[legacy-ftp] running as root', '[legacy-ftp] listening on 0.0.0.0:8080'],
   }),
   img('nimbus/pod-watcher', ['1.0', 'latest=1.0'], { port: null, api: true, logs: () => [] }),
+  // DO180: aplicação que demora a subir e tem endpoints de saúde.
+  img('nimbus/catalog', ['1.0', '1.1', 'latest=1.1'], {
+    paths: ['/', '/health/live', '/health/ready'],
+    inicio: 25,
+    mem: '180Mi',
+    logs: (v) => [`[catalog] starting version ${v.tag}`, '[catalog] loading product index (this takes about 25 seconds)', '[catalog] index loaded: 18421 products', '[catalog] listening on 0.0.0.0:8080'],
+  }),
+  // Gerador de carga: chama TARGET_URL sem parar.
+  img('nimbus/loadgen', ['1.0', 'latest=1.0'], {
+    port: null,
+    loadgen: true,
+    logs: (v) => [`[loadgen] sending requests to ${v.env.TARGET_URL || '(TARGET_URL not set)'}`, '[loadgen] 40 concurrent clients'],
+  }),
+  // Gera relatórios em memória: precisa de 600Mi.
+  img('nimbus/report-builder', ['2.0', 'latest=2.0'], {
+    mem: '600Mi',
+    logs: (v) => [`[report-builder] version ${v.tag}`, '[report-builder] loading 12 months of sales into memory', '[report-builder] cache warm (582 MiB)', '[report-builder] listening on 0.0.0.0:8080'],
+  }),
+  // Servidor de arquivos dos anexos: grava em /var/lib/notes.
+  img('nimbus/notes', ['1.0', 'latest=1.0'], {
+    paths: ['/', '/healthz'],
+    logs: (v) => [`[notes] version ${v.tag}`, '[notes] storing attachments in /var/lib/notes', '[notes] listening on 0.0.0.0:8080'],
+  }),
   img('ubi9/ubi', ['9.4', 'latest=9.4'], { port: null, user: '0', exits: 0, size: '78.2MB', logs: () => [] }),
 ];
 

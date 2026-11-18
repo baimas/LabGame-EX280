@@ -32,6 +32,11 @@ export const KINDS = [
   def('LimitRange', 'limitranges', ['limits'], true, 'v1'),
   def('Deployment', 'deployments', ['deploy'], true, 'apps/v1'),
   def('ReplicaSet', 'replicasets', ['rs'], true, 'apps/v1'),
+  def('StatefulSet', 'statefulsets', ['sts'], true, 'apps/v1'),
+  def('PersistentVolume', 'persistentvolumes', ['pv'], false, 'v1'),
+  def('StorageClass', 'storageclasses', ['sc'], false, 'storage.k8s.io/v1'),
+  def('HorizontalPodAutoscaler', 'horizontalpodautoscalers', ['hpa'], true, 'autoscaling/v2'),
+  def('ImageStreamTag', 'imagestreamtags', ['istag'], true, 'image.openshift.io/v1'),
   def('Job', 'jobs', [], true, 'batch/v1'),
   def('CronJob', 'cronjobs', ['cj'], true, 'batch/v1'),
   def('Route', 'routes', [], true, 'route.openshift.io/v1'),
@@ -101,4 +106,4 @@ export function kindOf(nome) {
 }
 
 // Tipos incluídos em `oc get all`.
-export const ALL = ['Pod', 'Service', 'Deployment', 'ReplicaSet', 'Job', 'CronJob', 'Route'];
+export const ALL = ['Pod', 'Service', 'Deployment', 'ReplicaSet', 'StatefulSet', 'HorizontalPodAutoscaler', 'Job', 'CronJob', 'ImageStream', 'Route'];

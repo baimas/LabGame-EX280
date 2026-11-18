@@ -29,6 +29,14 @@ export const progress = {
     this.data.lang = v;
     this.save();
   },
+  // Prova escolhida: 'ex280' ou 'ex180'. O progresso das missões é único.
+  get trilha() {
+    return this.data.trilha === 'ex180' ? 'ex180' : 'ex280';
+  },
+  set trilha(v) {
+    this.data.trilha = v;
+    this.save();
+  },
   of(id) {
     return this.data.missions[id] || { xp: 0, done: false, tries: 0 };
   },
@@ -57,7 +65,7 @@ export const progress = {
     return Object.values(this.data.missions).reduce((n, m) => n + m.xp, 0);
   },
   reset() {
-    this.data = { lang: this.data.lang, missions: {}, exames: {} };
+    this.data = { lang: this.data.lang, trilha: this.data.trilha, missions: {}, exames: {} };
     this.save();
     grava(CHAVE_SESSAO, null);
   },

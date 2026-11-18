@@ -10,7 +10,14 @@ with `oc`, and item-by-item grading (`lab grade`).
 The cluster is **simulated in JavaScript inside the browser**. It is free, runs offline, and
 needs no OpenShift, Docker, or Red Hat account.
 
-> All 10 chapters and the exam mode are playable. See [Current status](#current-status).
+There are two tracks, chosen with the **EX280 | EX180** switch at the top of the screen:
+
+- **EX280** (Red Hat Certified OpenShift Administrator): 10 chapters and 2 practice exams,
+  based on the DO280 4.22 course.
+- **EX180** (Red Hat Certified Technologist in OpenShift): 6 chapters and 2 practice exams,
+  based on the DO180 4.22 course. See [EX180 track](#ex180-track).
+
+XP and progress are shared by both tracks; switching tracks loses nothing.
 
 ## How to run
 
@@ -165,6 +172,29 @@ Installing operators through the web console is not simulated; the game covers t
 - **On to 4.19:** `apirequestcounts`, admin-ack for removed APIs, channel switch, and a minor version update.
 - **One channel ahead:** switching an operator channel with manual approval.
 - **Platform oral exam:** five questions on channels, rollback, EUS, and operator updates.
+
+## EX180 track
+
+Objectives of exam version EX180V422K, based on the DO180 4.22 course:
+
+| Chapter | Content | Missions |
+|---|---|---|
+| 1. Cluster and CLI | Install `oc` from the downloads route, `oc config`, inspect resources, cluster health, `oc adm must-gather` and `oc adm inspect` | 4 |
+| 2. Containers and pods | `oc run`, `oc exec`, `oc cp`, images by digest (`skopeo`, `oc image info`), troubleshooting | 3 |
+| 3. Deploy and expose | `oc new-app` from an image and a template, deployments, jobs and cron jobs, service DNS, `oc scale` and routes | 5 |
+| 4. Configuration and data | Config maps and secrets, PVCs, storage classes (RWO and RWX), stateful sets | 4 |
+| 5. Reliability | Liveness, readiness, and startup probes, requests, limits and OOMKilled, HPA with a load generator | 4 |
+| 6. Updates | `oc set image`, rollout history, image streams, `oc tag`, `oc set image-lookup`, and image triggers | 3 |
+
+The EX180 practice exams have 11 tasks and 2 hours, the duration stated on the
+[official exam page](https://www.redhat.com/en/services/training/ex180-red-hat-certified-technologist-in-openshift-exam).
+Red Hat does not publish the EX180 passing score; the game uses 210 out of 300, as in the EX280.
+
+For this track the simulator gained storage classes with dynamic provisioning (the default
+one binds on first consumer and only supports RWO; the NFS one supports RWX), volumes that
+keep files across pods, stateful sets, probes that kill and restart the container,
+OOMKilled, scheduling by the sum of requests, HPA, and image streams with triggers. Only
+inspection through the web console is left out.
 
 ## Coverage of the official objectives
 

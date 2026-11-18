@@ -46,6 +46,12 @@ code { font-family: var(--mono); font-size: .92em; background: #0b0f14; border: 
 .barra { height: 6px; background: var(--painel-2); border-radius: 3px; overflow: hidden; }
 .barra > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--destaque), var(--destaque-2)); transition: width .4s; }
 
+.acoes-topo { display: flex; align-items: center; gap: 12px; }
+.trilhas { display: inline-flex; border: 1px solid var(--borda); border-radius: 7px; padding: 2px; background: var(--fundo); }
+.trilhas .trilha { border: 0; border-radius: 5px; padding: 4px 12px; background: transparent; color: var(--suave); font-weight: 600; letter-spacing: .03em; }
+.trilhas .trilha:hover { color: var(--texto); }
+.trilhas .trilha.ativa { background: var(--destaque); color: #1a1208; }
+
 .palco { flex: 1; display: flex; min-height: 0; }
 
 .lateral { width: 280px; flex: none; overflow-y: auto; background: var(--painel); border-right: 1px solid var(--borda); padding: 8px 0 24px; }

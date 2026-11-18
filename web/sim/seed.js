@@ -5,6 +5,7 @@ import { kindDoObjeto } from './resources.js';
 import { objetosCatalogo } from './olm.js';
 import { objetosScc } from './scc.js';
 import { objetosUpdates } from './updates.js';
+import { objetosStorage } from './storage.js';
 
 export const VERSAO = '4.22.4';
 export const KUBE = 'v1.35.5';
@@ -73,6 +74,7 @@ function objetosBase() {
     ...objetosCatalogo(),
     ...objetosScc(),
     ...objetosUpdates(),
+    ...objetosStorage(),
     { kind: 'OperatorGroup', metadata: { name: 'global-operators', namespace: 'openshift-operators' }, spec: {} },
   ];
 }

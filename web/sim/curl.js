@@ -2,6 +2,20 @@
 // cluster (routes, API); dentro de um pod alcança services e pods.
 import { requisicao } from './net.js';
 import { INGRESS_CA, verifica } from './tls.js';
+import { BINARIO_OC, montaTar } from './arquivos.js';
+
+// Rota `downloads` do console: os binários do oc para cada plataforma.
+const DOWNLOADS = 'downloads-openshift-console.apps.lab.example.com';
+const PLATAFORMAS = ['amd64/linux/oc.tar', 'amd64/linux/oc.rhel8.tar', 'amd64/linux/oc.rhel9.tar', 'amd64/mac/oc.zip', 'amd64/windows/oc.zip', 'arm64/linux/oc.tar', 'arm64/mac/oc.zip', 'ppc64le/linux/oc.tar', 's390x/linux/oc.tar'];
+function downloads(caminho) {
+  const c = caminho.replace(/\?.*/, '');
+  if (c === '/' || c === '') return { status: 200, tipo: 'text/html; charset=utf-8', corpo: `<!doctype html>\n<html lang="en">\n<head><title>Directory listing for /</title></head>\n<body>\n<h2>Directory listing for /</h2>\n<hr>\n<ul>\n${['amd64/', 'arm64/', 'ppc64le/', 's390x/', 'oc-license'].map((x) => `<li><a href="${x}">${x}</a></li>`).join('\n')}\n</ul>\n<hr>\n</body>\n</html>\n` };
+  const dir = c.replace(/^\//, '');
+  const filhos = [...new Set(PLATAFORMAS.filter((p) => p.startsWith(dir) && p !== dir).map((p) => p.slice(dir.length).split('/')[0] + (p.slice(dir.length).includes('/') ? '/' : '')))];
+  if (dir.endsWith('/') && filhos.length) return { status: 200, tipo: 'text/html; charset=utf-8', corpo: `<!doctype html>\n<html lang="en">\n<head><title>Directory listing for /${dir}</title></head>\n<body>\n<h2>Directory listing for /${dir}</h2>\n<hr>\n<ul>\n${filhos.map((x) => `<li><a href="${x}">${x}</a></li>`).join('\n')}\n</ul>\n<hr>\n</body>\n</html>\n` };
+  if (PLATAFORMAS.includes(dir)) return { status: 200, tipo: 'application/octet-stream', corpo: dir.endsWith('.tar') ? montaTar({ oc: BINARIO_OC, kubectl: BINARIO_OC }) : 'PK\u0003\u0004 (zip simulado)' };
+  return { status: 404, tipo: 'text/html; charset=utf-8', corpo: '<!doctype html>\n<html lang="en">\n<head><title>Error response</title></head>\n<body>\n<h1>Error response</h1>\n<p>Error code: 404</p>\n<p>Message: File not found.</p>\n</body>\n</html>\n' };
+}
 
 const FRASES = { 200: 'OK', 302: 'Found', 400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found', 503: 'Service Unavailable' };
 
@@ -23,6 +37,8 @@ function opcoes(args) {
       else if (nome === 'location') o.L = true;
       else if (nome === 'fail') o.f = true;
       else if (nome === 'output') o.saida = pega();
+      else if (nome === 'remote-name') o.O = true;
+      else if (nome === 'progress-bar') o['#'] = true;
       else if (nome === 'write-out') o.formato = pega();
       else if (nome === 'max-time') o.max = pega();
       else if (nome === 'connect-timeout') o.conexao = pega();
@@ -39,7 +55,7 @@ function opcoes(args) {
           else o[comValor[ch]] = v;
           break;
         }
-        if ('ksSvIiLf'.includes(ch)) o[ch] = true;
+        if ('ksSvIiLfO#'.includes(ch)) o[ch] = true;
         else return { erro: `curl: option -${ch}: is unknown\ncurl: try 'curl --help' or 'curl --manual' for more information\n` };
       }
     } else urls.push(a);
@@ -101,7 +117,7 @@ export async function curl(ctx) {
     let r;
     for (let saltos = 0; saltos < 5; saltos++) {
       const token = o.headers.map((h) => h.match(/^authorization:\s*bearer\s+(\S+)/i)?.[1]).find(Boolean);
-      r = requisicao(c, noPod, { host: u.host, porta: u.porta, caminho: u.caminho, https: u.https, token });
+      r = !noPod && u.host === DOWNLOADS ? downloads(u.caminho) : requisicao(c, noPod, { host: u.host, porta: u.porta, caminho: u.caminho, https: u.https, token });
       if (!o.L || r.status !== 302) break;
       u = parseUrl(r.local);
     }
@@ -141,6 +157,16 @@ export async function curl(ctx) {
       const fmt = o.formato.replace(/\\n/g, '\n').replace(/%\{http_code\}|%\{response_code\}/g, String(r.status)).replace(/%\{content_type\}/g, r.tipo).replace(/%\{url_effective\}/g, u.texto);
       if (o.saida) corpo = fmt;
       else corpo += fmt;
+    }
+    if (o.O && !o.saida) {
+      const nome = u.caminho.replace(/\?.*/, '').split('/').pop();
+      if (!nome) {
+        err += 'curl: Remote file name has no length\ncurl: (23) Failed writing received data to disk/application\n';
+        code = 23;
+        continue;
+      }
+      o.saida = nome;
+      if (!o.s) err += '  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                 Dload  Upload   Total   Spent    Left  Speed\n100  138M  100  138M    0     0   212M      0 --:--:-- --:--:-- --:--:--  212M\n';
     }
     if (o.saida && o.saida !== '-') {
       if (o.saida !== '/dev/null') {

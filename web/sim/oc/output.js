@@ -172,6 +172,43 @@ const COLUNAS = {
     head: ['NAME', 'STATUS', 'VOLUME', 'CAPACITY', 'ACCESS MODES', 'STORAGECLASS', 'VOLUMEATTRIBUTESCLASS', 'AGE'],
     row: (o, c) => [o.status?.phase || 'Pending', o.spec?.volumeName || '', o.status?.capacity?.storage || '', (o.status?.accessModes || []).map((m) => ({ ReadWriteOnce: 'RWO', ReadWriteMany: 'RWX', ReadOnlyMany: 'ROX', ReadWriteOncePod: 'RWOP' })[m] || m).join(','), o.spec?.storageClassName || '', '<unset>', idade(o, c)],
   },
+  StatefulSet: {
+    head: ['NAME', 'READY', 'AGE'],
+    row: (o, c) => [`${o.status?.readyReplicas || 0}/${o.spec.replicas}`, idade(o, c)],
+    wideHead: ['CONTAINERS', 'IMAGES'],
+    wide: (o) => [o.spec.template.spec.containers.map((x) => x.name).join(','), o.spec.template.spec.containers.map((x) => x.image).join(',')],
+  },
+  StorageClass: {
+    head: ['NAME', 'PROVISIONER', 'RECLAIMPOLICY', 'VOLUMEBINDINGMODE', 'ALLOWVOLUMEEXPANSION', 'AGE'],
+    nome: (o) => o.metadata.name + (o.metadata.annotations?.['storageclass.kubernetes.io/is-default-class'] === 'true' ? ' (default)' : ''),
+    row: (o, c) => [o.provisioner, o.reclaimPolicy || 'Delete', o.volumeBindingMode || 'Immediate', String(Boolean(o.allowVolumeExpansion)), idade(o, c)],
+  },
+  PersistentVolume: {
+    head: ['NAME', 'CAPACITY', 'ACCESS MODES', 'RECLAIM POLICY', 'STATUS', 'CLAIM', 'STORAGECLASS', 'VOLUMEATTRIBUTESCLASS', 'REASON', 'AGE'],
+    row: (o, c) => [o.spec.capacity?.storage || '', (o.spec.accessModes || []).map((m) => ({ ReadWriteOnce: 'RWO', ReadWriteMany: 'RWX', ReadOnlyMany: 'ROX', ReadWriteOncePod: 'RWOP' })[m] || m).join(','), o.spec.persistentVolumeReclaimPolicy, o.status?.phase || 'Available', o.spec.claimRef ? `${o.spec.claimRef.namespace}/${o.spec.claimRef.name}` : '', o.spec.storageClassName || '', '<unset>', '', idade(o, c)],
+  },
+  HorizontalPodAutoscaler: {
+    head: ['NAME', 'REFERENCE', 'TARGETS', 'MINPODS', 'MAXPODS', 'REPLICAS', 'AGE'],
+    row: (o, c) => {
+      const alvos = (o.spec.metrics || []).filter((m) => m.type === 'Resource').map((m) => {
+        const atual = (o.status?.currentMetrics || []).find((x) => x.resource?.name === m.resource.name)?.resource.current.averageUtilization;
+        return `${m.resource.name}: ${atual ?? '<unknown>'}%/${m.resource.target.averageUtilization}%`.replace('<unknown>%', '<unknown>');
+      });
+      return [`${o.spec.scaleTargetRef.kind}/${o.spec.scaleTargetRef.name}`, alvos.join(', ') || '<none>', o.spec.minReplicas ?? 1, o.spec.maxReplicas, o.status?.currentReplicas ?? 0, idade(o, c)];
+    },
+  },
+  ImageStream: {
+    head: ['NAME', 'IMAGE REPOSITORY', 'TAGS', 'UPDATED'],
+    row: (o, c) => {
+      const tags = (o.status?.tags || []).filter((t) => t.items?.length);
+      const ultima = tags.map((t) => t.items[0].created).sort().at(-1);
+      return [`default-route-openshift-image-registry.apps.lab.example.com/${o.metadata.namespace}/${o.metadata.name}`, tags.map((t) => t.tag).join(','), ultima ? `${desde(ultima, c)} ago`.replace(/^(\d+)s ago$/, 'About a minute ago') : ''];
+    },
+  },
+  ImageStreamTag: {
+    head: ['NAME', 'IMAGE REFERENCE', 'UPDATED'],
+    row: (o, c) => [o.image?.dockerImageReference || '', o.image?.metadata?.creationTimestamp ? `${desde(o.image.metadata.creationTimestamp, c)} ago` : ''],
+  },
   ConfigMap: { head: ['NAME', 'DATA', 'AGE'], row: (o, c) => [Object.keys(o.data || {}).length, idade(o, c)] },
   Secret: { head: ['NAME', 'TYPE', 'DATA', 'AGE'], row: (o, c) => [o.type, Object.keys(o.data || {}).length, idade(o, c)] },
   ServiceAccount: { head: ['NAME', 'SECRETS', 'AGE'], row: (o, c) => [1, idade(o, c)] },
@@ -215,7 +252,7 @@ export function tabela(k, itens, c, { wide, labels, todosNs, prefixo, semCabecal
   const head = [...(todosNs && k.namespaced ? ['NAMESPACE'] : []), ...(col.semNome ? col.head : col.head), ...(wide && col.wideHead ? col.wideHead : []), ...(labels ? ['LABELS'] : [])];
   const linhas = itens.map((o) => [
     ...(todosNs && k.namespaced ? [o.metadata.namespace] : []),
-    ...(col.semNome ? [] : [(prefixo ? `${k.out}/` : '') + o.metadata.name]),
+    ...(col.semNome ? [] : [(prefixo ? `${k.out}/` : '') + (col.nome && !prefixo ? col.nome(o) : o.metadata.name)]),
     ...col.row(o, c),
     ...(wide && col.wide ? col.wide(o, c) : []),
     ...(labels ? [labelsText(o.metadata.labels)] : []),
@@ -281,6 +318,11 @@ function conteineres(lista, estados, pod, c) {
     for (const tipo of ['limits', 'requests']) {
       const r = ct.resources?.[tipo];
       if (r) s += `    ${tipo[0].toUpperCase() + tipo.slice(1)}:\n${Object.entries(r).map(([k, v]) => `      ${k}:     ${v}\n`).join('')}`;
+    }
+    for (const [rotulo, pr] of [['Liveness', ct.livenessProbe], ['Readiness', ct.readinessProbe], ['Startup', ct.startupProbe]]) {
+      if (!pr) continue;
+      const acao = pr.httpGet ? `http-get ${(pr.httpGet.scheme || 'HTTP').toLowerCase()}://:${pr.httpGet.port}${pr.httpGet.path || '/'}` : pr.tcpSocket ? `tcp-socket :${pr.tcpSocket.port}` : `exec [${(pr.exec?.command || []).join(' ')}]`;
+      s += `    ${(rotulo + ':').padEnd(16)}${acao} delay=${pr.initialDelaySeconds ?? 0}s timeout=${pr.timeoutSeconds ?? 1}s period=${pr.periodSeconds ?? 10}s #success=${pr.successThreshold ?? 1} #failure=${pr.failureThreshold ?? 3}\n`;
     }
     for (const f of ct.envFrom || []) {
       const [nome, tipo] = f.configMapRef ? [f.configMapRef.name, 'ConfigMap'] : [f.secretRef.name, 'Secret'];
@@ -444,6 +486,60 @@ const DESCRICOES = {
     const hard = o.spec?.quota?.hard || {};
     const linhas = Object.keys(hard).sort().map((r) => [r, o.status?.total?.used?.[r] ?? '0', hard[r]]);
     return s + table([['Resource', 'Used', 'Hard'], ['--------', '----', '----'], ...linhas]);
+  },
+  StatefulSet(o, c) {
+    const st = o.status || {};
+    let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + campo('CreationTimestamp', o.metadata.creationTimestamp);
+    s += campo('Selector', labelsText(o.spec.selector.matchLabels)) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
+    s += campo('Replicas', `${o.spec.replicas} desired | ${st.replicas || 0} total`) + campo('Update Strategy', o.spec.updateStrategy?.type || 'RollingUpdate');
+    s += campo('Pods Status', `${st.readyReplicas || 0} Running / ${(st.replicas || 0) - (st.readyReplicas || 0)} Waiting / 0 Succeeded / 0 Failed`);
+    s += 'Pod Template:\n' + multi('  Labels', o.spec.template.metadata?.labels);
+    s += '  Containers:\n' + conteineres(o.spec.template.spec.containers, null, o, c).replace(/^/gm, ' ').replace(/ $/, '');
+    s += volumes(o.spec.template.spec.volumes).replace(/^/gm, '  ').replace(/ {2}$/, '');
+    s += 'Volume Claims:\n' + (o.spec.volumeClaimTemplates || []).map((t) => `  Name:          ${t.metadata.name}\n  StorageClass:  ${t.spec.storageClassName || ''}\n  Labels:        <none>\n  Annotations:   <none>\n  Capacity:      ${t.spec.resources?.requests?.storage}\n  Access Modes:  [${(t.spec.accessModes || []).join(' ')}]\n`).join('');
+    return s + eventosDe(o, c);
+  },
+  PersistentVolumeClaim(o, c) {
+    let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + campo('StorageClass', o.spec.storageClassName || '');
+    s += campo('Status', o.status?.phase || 'Pending') + campo('Volume', o.spec.volumeName || '') + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
+    s += campo('Finalizers', '[kubernetes.io/pvc-protection]') + campo('Capacity', o.status?.capacity?.storage || '') + campo('Access Modes', (o.status?.accessModes || []).map((m) => ({ ReadWriteOnce: 'RWO', ReadWriteMany: 'RWX', ReadOnlyMany: 'ROX', ReadWriteOncePod: 'RWOP' })[m] || m).join(','));
+    s += campo('VolumeMode', o.spec.volumeMode || 'Filesystem');
+    const usado = c.list('Pod', o.metadata.namespace).filter((p) => (p.spec.volumes || []).some((v) => v.persistentVolumeClaim?.claimName === o.metadata.name)).map((p) => p.metadata.name);
+    s += campo('Used By', usado.join('\n' + ' '.repeat(18)) || '<none>');
+    return s + eventosDe(o, c);
+  },
+  HorizontalPodAutoscaler(o, c) {
+    let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
+    s += campo('CreationTimestamp', o.metadata.creationTimestamp) + campo('Reference', `${o.spec.scaleTargetRef.kind}/${o.spec.scaleTargetRef.name}`);
+    s += 'Metrics:                                               ( current / target )\n';
+    for (const m of (o.spec.metrics || []).filter((x) => x.type === 'Resource')) {
+      const atual = (o.status?.currentMetrics || []).find((x) => x.resource?.name === m.resource.name)?.resource.current;
+      s += `  resource ${m.resource.name} on pods  (as a percentage of request):  ${atual ? `${atual.averageUtilization}% (${atual.averageValue || ''})` : '<unknown>'} / ${m.resource.target.averageUtilization}%\n`;
+    }
+    s += campo('Min replicas', o.spec.minReplicas ?? 1) + campo('Max replicas', o.spec.maxReplicas);
+    s += `${o.spec.scaleTargetRef.kind} pods:       ${o.status?.currentReplicas ?? 0} current / ${o.status?.desiredReplicas ?? 0} desired\n`;
+    if (o.status?.conditions?.length) s += 'Conditions:\n' + table([['  Type', 'Status', 'Reason', 'Message'], ['  ----', '------', '------', '-------'], ...o.status.conditions.map((x) => ['  ' + x.type, x.status, x.reason, x.message])]);
+    return s + eventosDe(o, c);
+  },
+  ImageStream(o, c) {
+    let s = campo('Name', o.metadata.name) + campo('Namespace', o.metadata.namespace) + campo('Created', `${desde(o.metadata.creationTimestamp, c)} ago`);
+    s += multi('Labels', o.metadata.labels) + multi('Annotations', o.metadata.annotations);
+    s += campo('Image Repository', `default-route-openshift-image-registry.apps.lab.example.com/${o.metadata.namespace}/${o.metadata.name}`);
+    s += campo('Image Lookup', `local=${Boolean(o.spec?.lookupPolicy?.local)}`);
+    const tags = o.status?.tags || [];
+    s += campo('Unique Images', new Set(tags.flatMap((t) => (t.items || []).map((i) => i.image))).size) + campo('Tags', tags.length) + '\n';
+    for (const t of tags) {
+      const spec = (o.spec?.tags || []).find((x) => x.name === t.tag);
+      s += `${t.tag}\n`;
+      if (spec?.from) s += `  ${spec.from.kind === 'DockerImage' ? 'tagged from' : 'tagged from'} ${spec.from.name}${spec.importPolicy?.scheduled ? '\n    updates automatically from registry ' + spec.from.name : ''}\n`;
+      s += '\n';
+      (t.items || []).forEach((i, n) => {
+        s += `  ${n === 0 ? '*' : ' '} ${i.dockerImageReference}\n      ${desde(i.created, c)} ago\n`;
+      });
+      for (const x of t.conditions || []) s += `  ! error: Import failed (${x.reason}): ${x.message}\n      ${desde(x.lastTransitionTime, c)} ago\n`;
+      s += '\n';
+    }
+    return s;
   },
   ClusterOperator(o) {
     let s = campo('Name', o.metadata.name) + campo('Kind', 'ClusterOperator') + 'Status:\n  Conditions:\n';
