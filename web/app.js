@@ -22,7 +22,7 @@ const TEXTOS = {
     terminalParado: 'Escolha uma missão na lista e clique em "Iniciar missão" para ligar o terminal.\r\n',
     pronto: (id) => `Ambiente da missão ${id} preparado. Digite "help" para ver os comandos simulados.\n\n`,
     retomado: (id) => `Missão ${id} retomada de onde você parou.\n\n`,
-    bemVindo: (p) => `Bem-vindo ao LabGame ${p}`,
+    bemVindo: (p) => `Bem-vindo ao Terminauta ${p}`,
     intro: [
       'Você é o novo administrador OpenShift da Nimbus Tecnologia. Cada chamado é um lab no formato da prova: uma especificação do que precisa estar pronto, sem o passo a passo.',
       'O cluster é simulado dentro do navegador. Não há nada para instalar e nada sai da sua máquina.',
@@ -51,7 +51,7 @@ const TEXTOS = {
     terminalParado: 'Pick a mission from the list and click "Start mission" to power on the terminal.\r\n',
     pronto: (id) => `Environment for mission ${id} is ready. Type "help" to list the simulated commands.\n\n`,
     retomado: (id) => `Mission ${id} resumed where you left off.\n\n`,
-    bemVindo: (p) => `Welcome to LabGame ${p}`,
+    bemVindo: (p) => `Welcome to Terminauta ${p}`,
     intro: [
       'You are the new OpenShift administrator at Nimbus Tecnologia. Each ticket is a lab in the exam format: a specification of what must be in place, with no step-by-step.',
       'The cluster is simulated inside the browser. There is nothing to install and nothing leaves your machine.',
@@ -233,8 +233,8 @@ function desenhaTopo() {
   $('subtitulo').textContent = t.subtitulo;
   $('btn-idioma').textContent = t.idioma;
   const tr = trilha(progress.trilha);
-  $('marca-nome').innerHTML = `LabGame <span>${tr.nome}</span>`;
-  document.title = `LabGame ${tr.nome}`;
+  $('marca-nome').textContent = 'Terminauta';
+  document.title = `Terminauta ${tr.nome}`;
   $('trilhas').setAttribute('aria-label', t.trocaTrilha);
   $('trilhas').innerHTML = TRILHAS.map((x) => `<button type="button" class="trilha${x.id === tr.id ? ' ativa' : ''}" data-trilha="${x.id}" aria-pressed="${x.id === tr.id}" title="${esc(x.titulo[L()])}">${x.nome}</button>`).join('');
   $('editor-salvar').textContent = t.salvar;
@@ -278,6 +278,7 @@ function desenhaLista() {
 
 // Tarefas que o jogador pode ir marcando (só para ele se organizar; a correção
 // continua sendo o lab grade). Fica guardado no navegador.
+// As chaves mantêm o nome antigo para não perder o progresso de quem já jogava.
 const CHAVE_TAREFAS = 'labgame-ex280.tarefas';
 function marcadas() {
   try {
@@ -610,4 +611,4 @@ if (!selecionada) selecionada = null;
 desenha();
 
 // Acesso para depuração e para os testes de interface.
-window.labgame = { term, get ativa() { return ativa; }, MISSIONS };
+window.terminauta = { term, get ativa() { return ativa; }, MISSIONS };

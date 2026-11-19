@@ -1,7 +1,7 @@
 {
-  "name": "labgame-ex280",
+  "name": "terminauta",
   "version": "0.1.0",
-  "description": "Labs gamificados para estudar para a prova Red Hat EX280, com um OpenShift simulado no navegador",
+  "description": "Terminauta: labs gamificados com terminal simulado no navegador e flashcards. Primeiras trilhas: EX280 e EX180",
   "type": "module",
   "private": true,
   "scripts": {

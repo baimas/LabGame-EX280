@@ -1,8 +1,14 @@
-# LabGame EX280
+<p align="center"><img src="web/assets/logo.svg" alt="Terminauta" width="96"></p>
+
+# Terminauta
 
 *[Leia em português](README.md)*
 
-Gamified labs to prepare for the **Red Hat EX280** exam (Red Hat Certified OpenShift
+**Terminauta** is a study platform where you learn technology by piloting a simulated terminal:
+gamified missions, automatic grading, and spaced-repetition flashcards. The first tracks cover
+OpenShift.
+
+The main track prepares you for the **Red Hat EX280** exam (Red Hat Certified OpenShift
 Administrator). You are the OpenShift administrator of a fictional company and work through
 tickets in the format of Red Hat labs: a specification of what must be in place, a terminal
 with `oc`, and item-by-item grading (`lab grade`).
@@ -25,11 +31,11 @@ Requires only [Node.js](https://nodejs.org) 20 or newer, used as a static file s
 There are no dependencies to install.
 
 ```bash
-git clone https://github.com/baimas/LabGame-EX280.git
+git clone https://github.com/baimas/Terminauta.git
 ```
 
 ```bash
-cd LabGame-EX280
+cd Terminauta
 ```
 
 ```bash

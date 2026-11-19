@@ -34,5 +34,5 @@ createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Não encontrado');
   }
 }).listen(porta, '127.0.0.1', () => {
-  console.log(`LabGame EX280 em http://localhost:${porta}`);
+  console.log(`Terminauta em http://localhost:${porta}`);
 });

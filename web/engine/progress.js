@@ -1,4 +1,5 @@
 // Progresso do jogador, guardado no navegador.
+// As chaves mantêm o nome antigo (LabGame) para não perder o progresso salvo.
 const CHAVE = 'labgame-ex280.progresso';
 const CHAVE_SESSAO = 'labgame-ex280.sessao';
 

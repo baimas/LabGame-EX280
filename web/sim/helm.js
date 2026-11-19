@@ -556,7 +556,7 @@ export async function helm(ctx) {
           const dir = `${destino}/${ch.meta.name}`;
           if (fs.exists(dir)) throw falha(`failed to untar: a file or directory with the name ${dir} already exists`);
           for (const [arq, conteudo] of Object.entries(ch.files)) fs.put(`${dir}/${arq}`, conteudo);
-        } else fs.put(`${destino}/${ch.meta.name}-${ch.meta.version}.tgz`, JSON.stringify({ aviso: 'Pacote simulado do LabGame EX280. Use helm pull --untar para ver os arquivos.', files: ch.files }));
+        } else fs.put(`${destino}/${ch.meta.name}-${ch.meta.version}.tgz`, JSON.stringify({ aviso: 'Pacote simulado do Terminauta. Use helm pull --untar para ver os arquivos.', files: ch.files }));
         return ok('');
       }
       case 'install':
