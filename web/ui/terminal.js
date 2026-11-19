@@ -5,7 +5,7 @@ import { candidatos as candidatosOc } from '../sim/oc/completar.js';
 import { KINDS, kindOf } from '../sim/resources.js';
 
 const TEMA = {
-  background: '#0b0f14', foreground: '#d7dde5', cursor: '#e8833a', selectionBackground: '#2b3a4d',
+  background: '#1f252f', foreground: '#e8f1f9', cursor: '#b9aef0', cursorAccent: '#1f252f', selectionBackground: '#57449a',
   black: '#0b0f14', red: '#ef6b6b', green: '#6cc98a', yellow: '#e5c06b', blue: '#6ba6ef', magenta: '#c08bef', cyan: '#5fc7c7', white: '#d7dde5',
   brightBlack: '#5c6773', brightRed: '#ff8a8a', brightGreen: '#8be3a6', brightYellow: '#f5d68a', brightBlue: '#8cbcff', brightMagenta: '#d3a8ff', brightCyan: '#84e0e0', brightWhite: '#ffffff',
 };

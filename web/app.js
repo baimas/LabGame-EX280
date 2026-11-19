@@ -7,6 +7,7 @@ import { createWorld } from './engine/world.js';
 import { progress } from './engine/progress.js';
 import { GameTerminal } from './ui/terminal.js';
 import { Abort } from './sim/shell.js';
+import { banner, icone, temaDe } from './ui/ilustracoes.js';
 
 const TEXTOS = {
   pt: {
@@ -222,7 +223,7 @@ function desenhaTopo() {
   $('subtitulo').textContent = t.subtitulo;
   $('btn-idioma').textContent = t.idioma;
   const tr = trilha(progress.trilha);
-  $('marca-nome').textContent = `LabGame ${tr.nome}`;
+  $('marca-nome').innerHTML = `LabGame <span>${tr.nome}</span>`;
   document.title = `LabGame ${tr.nome}`;
   $('trilhas').setAttribute('aria-label', t.trocaTrilha);
   $('trilhas').innerHTML = TRILHAS.map((x) => `<button type="button" class="trilha${x.id === tr.id ? ' ativa' : ''}" data-trilha="${x.id}" aria-pressed="${x.id === tr.id}" title="${esc(x.titulo[L()])}">${x.nome}</button>`).join('');
@@ -240,26 +241,42 @@ function desenhaLista() {
   const t = T();
   const tr = trilha(progress.trilha);
   const exames = EXAMS.filter((ex) => ex.trilha === tr.id);
-  let html = `<div class="capitulo"><h2><span>◆ ${t.modoProva}</span><span></span></h2><p>${t.provaDesc(exames[0].minutes / 60)}</p></div>`;
+  let html = `<div class="capitulo"><h2><span class="rotulo">${icone('trofeu', 15)}${t.modoProva}</span><span></span></h2><p>${t.provaDesc(exames[0].minutes / 60)}</p></div>`;
   for (const ex of exames) {
     const p = progress.ofExam(ex.id);
     const classes = ['missao', 'prova', p.passou ? 'feita' : '', selecionada?.id === ex.id ? 'atual' : ''].join(' ');
-    const marca = p.passou ? '✓' : ativa?.missao.id === ex.id && !ativa.entregue ? '▸' : '○';
-    html += `<button type="button" class="${classes}" data-id="${ex.id}"><span class="estado">${marca}</span><span class="nome">${esc(ex.title[L()])}</span><span class="xp">${p.tentativas ? `${p.melhor}/${NOTA_MAXIMA}` : `${ex.minutes} min`}</span></button>`;
+    const andamento = ativa?.missao.id === ex.id && !ativa.entregue ? ' andamento' : '';
+    html += `<button type="button" class="${classes}${andamento}" data-id="${ex.id}"><span class="estado">${p.passou ? '✓' : ''}</span><span class="nome">${esc(ex.title[L()])}</span><span class="xp">${p.tentativas ? `${p.melhor}/${NOTA_MAXIMA}` : `${ex.minutes} min`}</span></button>`;
   }
   for (const cap of tr.capitulos) {
     const feitas = cap.missions.filter((m) => progress.of(m.id).done).length;
-    html += `<div class="capitulo${cap.missions.length ? '' : ' vazio'}"><h2><span>${esc(cap.id.slice(1))} · ${esc(cap.title[L()])}</span><span>${cap.missions.length ? `${feitas}/${cap.missions.length}` : ''}</span></h2><p>${esc(cap.domain[L()])}</p></div>`;
+    const pct = cap.missions.length ? Math.round((feitas / cap.missions.length) * 100) : 0;
+    html += `<div class="capitulo${cap.missions.length ? '' : ' vazio'}"><h2><span class="rotulo">${icone(temaDe(cap.missions[0]?.id || ''), 15)}${esc(cap.id.slice(1))} · ${esc(cap.title[L()])}</span><span>${cap.missions.length ? `${feitas}/${cap.missions.length}` : ''}</span></h2><p>${esc(cap.domain[L()])}</p><div class="progresso"><span style="width:${pct}%"></span></div></div>`;
     if (!cap.missions.length) html += `<div class="em-breve">${t.emBreve}</div>`;
     for (const m of cap.missions) {
       const p = progress.of(m.id);
       const classes = ['missao', p.done ? 'feita' : '', selecionada?.id === m.id ? 'atual' : ''].join(' ');
-      const marca = p.done ? '✓' : ativa?.missao.id === m.id ? '▸' : '○';
-      html += `<button type="button" class="${classes}" data-id="${m.id}"><span class="estado">${marca}</span><span class="nome">${esc(m.title[L()])}</span><span class="xp">${p.xp || m.xp} XP</span></button>`;
+      const andamento = ativa?.missao.id === m.id && !p.done ? ' andamento' : '';
+      html += `<button type="button" class="${classes}${andamento}" data-id="${m.id}"><span class="estado">${p.done ? '✓' : ''}</span><span class="nome">${esc(m.title[L()])}</span><span class="xp">${p.xp || m.xp} XP</span></button>`;
     }
   }
   html += `<div class="rodape-lateral"><button type="button" class="fantasma" id="btn-zerar">${t.zerar}</button></div>`;
   $('lista').innerHTML = html;
+}
+
+// Tarefas que o jogador pode ir marcando (só para ele se organizar; a correção
+// continua sendo o lab grade). Fica guardado no navegador.
+const CHAVE_TAREFAS = 'labgame-ex280.tarefas';
+function marcadas() {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_TAREFAS)) || {};
+  } catch {
+    return {};
+  }
+}
+function listaTarefas(chave, itens) {
+  const m = marcadas()[chave] || [];
+  return `<ol class="tarefas" data-chave="${esc(chave)}">${itens.map((x, i) => `<li data-i="${i}" class="${m.includes(i) ? 'marcada' : ''}">${rico(x)}</li>`).join('')}</ol>`;
 }
 
 function desenhaChamado() {
@@ -268,19 +285,22 @@ function desenhaChamado() {
   const m = selecionada;
   if (!m) {
     const tr = trilha(progress.trilha);
-    el.innerHTML = `<div class="boas-vindas"><h1>${esc(t.bemVindo(tr.nome))}</h1><p><b>${esc(tr.titulo[L()])}</b> · ${esc(t.cursoBase(tr.curso))}</p>${t.intro.map((p) => `<p>${rico(p)}</p>`).join('')}<ul>${t.regras.map((r) => `<li>${rico(r)}</li>`).join('')}</ul><p class="aviso">${rico(t.limite)}</p></div>`;
+    const icones = ['terminal', 'pod', 'escudo', 'documento'];
+    el.innerHTML = `<div class="boas-vindas"><img class="logo-grande" src="assets/logo.svg" alt=""><h1>${esc(t.bemVindo(tr.nome))}</h1><p><b>${esc(tr.titulo[L()])}</b> · ${esc(t.cursoBase(tr.curso))}</p>${t.intro.map((p) => `<p>${rico(p)}</p>`).join('')}<ul class="passos">${t.regras.map((r, i) => `<li>${icone(icones[i], 22)}${rico(r)}</li>`).join('')}</ul><p class="aviso">${rico(t.limite)}</p></div>`;
     return;
   }
   if (m.exam) return desenhaProva(el, m);
   const emCurso = ativa?.missao.id === m.id ? ativa : null;
   const p = progress.of(m.id);
-  let html = `<h1>${esc(m.title[L()])}</h1>`;
+  const cap = chapterOf(m.id);
+  let html = banner(m.id, m.title[L()]);
+  html += `<div class="etiqueta">${icone(temaDe(m.id), 14)}${esc(cap ? `${cap.id.slice(1)} · ${cap.title[L()]}` : '')}</div><h1>${esc(m.title[L()])}</h1>`;
   html += `<div class="meta"><span>${t.tempo}: <b>${m.minutes} ${t.min}</b></span><span>${t.dificuldade}: <b>${'●'.repeat(m.difficulty)}${'○'.repeat(3 - m.difficulty)}</b></span><span>XP: <b>${m.xp}</b></span>${p.tries ? `<span>${t.melhor}: <b>${p.xp} XP</b></span>` : ''}</div>`;
   html += `<p class="historia">${rico(m.story[L()])}</p>`;
-  html += `<h3>${t.tarefas}</h3><ol class="tarefas">${m.tasks[L()].map((x) => `<li>${rico(x)}</li>`).join('')}</ol>`;
+  html += `<h3>${t.tarefas}</h3>${listaTarefas(m.id, m.tasks[L()])}`;
   const doc = DOCS[m.id];
   if (doc) {
-    html += `<details class="docs"><summary>${esc(t.docsTitulo)}</summary><p>${esc(t.docsGuia)}: <a href="${linkGuia(doc.guia)}" target="_blank" rel="noopener">${esc(GUIAS[doc.guia])}</a></p><p>${esc(t.docsTermos)}: ${doc.termos.map((x) => `<code>${esc(x)}</code>`).join(' · ')}</p><p class="nota">${esc(t.docsComo)}</p></details>`;
+    html += `<details class="docs"><summary>${icone('documento', 16)}${esc(t.docsTitulo)}</summary><p>${esc(t.docsGuia)}: <a href="${linkGuia(doc.guia)}" target="_blank" rel="noopener">${esc(GUIAS[doc.guia])}</a></p><p>${esc(t.docsTermos)}: ${doc.termos.map((x) => `<code>${esc(x)}</code>`).join(' · ')}</p><p class="nota">${esc(t.docsComo)}</p></details>`;
   }
 
   if (emCurso) {
@@ -305,7 +325,7 @@ function desenhaProva(el, m) {
   const t = T();
   const emCurso = ativa?.missao.id === m.id ? ativa : null;
   const p = progress.ofExam(m.id);
-  let html = `<h1>${esc(m.title[L()])}</h1>`;
+  let html = banner(m.id, m.title[L()]) + `<div class="etiqueta">${icone('trofeu', 14)}${t.modoProva}</div><h1>${esc(m.title[L()])}</h1>`;
   html += `<div class="meta"><span>${t.tempo}: <b>${m.minutes} ${t.min}</b></span><span>${t.tarefa}s: <b>${m.partes.length}</b></span><span>${t.nota}: <b>0–${NOTA_MAXIMA}</b>, ${t.corte} ${CORTE}</span>${p.tentativas ? `<span>${t.melhorNota}: <b>${p.melhor}</b></span>` : ''}</div>`;
   html += `<p class="historia">${rico(m.story[L()])}</p>`;
   if (emCurso?.entregue && emCurso.resultado?.exame) {
@@ -325,7 +345,7 @@ function desenhaProva(el, m) {
   if (emCurso && !emCurso.entregue) {
     html += `<details class="docs"><summary>${esc(t.docsTitulo)}</summary><p>${esc(t.docsProva)} <a href="${indiceDocs()}" target="_blank" rel="noopener">docs.redhat.com · OpenShift ${VERSAO_DOCS}</a></p></details>`;
     m.partes.forEach((parte, i) => {
-      html += `<h3>${t.tarefa} ${i + 1} · ${esc(parte.title[L()])}</h3><p class="historia">${rico(parte.story[L()])}</p><ol class="tarefas">${parte.tasks[L()].map((x) => `<li>${rico(x)}</li>`).join('')}</ol>`;
+      html += `<h3>${t.tarefa} ${i + 1} · ${esc(parte.title[L()])}</h3><p class="historia">${rico(parte.story[L()])}</p>${listaTarefas(`${m.id}:${parte.id}`, parte.tasks[L()])}`;
     });
   }
   el.innerHTML = html;
@@ -377,6 +397,20 @@ $('lista').addEventListener('click', (e) => {
 });
 
 $('chamado').addEventListener('click', async (e) => {
+  const tarefa = e.target.closest('.tarefas li');
+  if (tarefa && !e.target.closest('a')) {
+    const chave = tarefa.parentElement.dataset.chave;
+    const i = Number(tarefa.dataset.i);
+    const todas = marcadas();
+    const lista = new Set(todas[chave] || []);
+    lista.has(i) ? lista.delete(i) : lista.add(i);
+    todas[chave] = [...lista];
+    try {
+      localStorage.setItem(CHAVE_TAREFAS, JSON.stringify(todas));
+    } catch { /* sem armazenamento: só não lembra */ }
+    tarefa.classList.toggle('marcada');
+    return;
+  }
   const cmd = e.target.closest('[data-cmd]');
   if (cmd && ativa) {
     await term.type(ativa.missao.solution[Number(cmd.dataset.cmd)].cmd);
