@@ -61,11 +61,24 @@ export const progress = {
     (this.data.exames ??= {})[id] = e;
     this.save();
   },
+  // Flashcards: estado de repetição espaçada por card e quantos novos hoje.
+  get flash() {
+    const f = (this.data.flash ??= { estados: {}, dia: '', novos: 0 });
+    const hoje = new Date().toISOString().slice(0, 10);
+    if (f.dia !== hoje) Object.assign(f, { dia: hoje, novos: 0 });
+    return f;
+  },
+  gravaCard(id, estado, eraNovo) {
+    const f = this.flash;
+    f.estados[id] = estado;
+    if (eraNovo) f.novos++;
+    this.save();
+  },
   totalXp() {
     return Object.values(this.data.missions).reduce((n, m) => n + m.xp, 0);
   },
   reset() {
-    this.data = { lang: this.data.lang, trilha: this.data.trilha, missions: {}, exames: {} };
+    this.data = { lang: this.data.lang, trilha: this.data.trilha, missions: {}, exames: {}, flash: { estados: {}, dia: '', novos: 0 } };
     this.save();
     grava(CHAVE_SESSAO, null);
   },

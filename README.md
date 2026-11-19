@@ -173,6 +173,15 @@ A instalação de operators pelo console web não é simulada; o jogo cobre o ca
 - **Um canal à frente:** troca de canal de um operator com aprovação manual.
 - **Prova oral da Plataforma:** cinco perguntas sobre canais, rollback, EUS e atualização de operators.
 
+## Flashcards
+
+O item **Flashcards**, no topo da lista, abre um baralho com repetição espaçada no estilo do
+Anki: 100 cards da EX280 e 90 da EX180, com perguntas sobre comandos e conceitos de cada
+capítulo (por exemplo: "Qual comando mostra a diferença entre o YAML local e o servidor?" →
+`oc diff -f`). Responda de cabeça, vire o card (Espaço) e dê a nota de 1 a 4 (De novo,
+Difícil, Bom, Fácil). Cada botão mostra quando o card volta. São no máximo 20 cards novos por
+dia, há filtro por capítulo e um atalho para praticar o assunto no Lab.
+
 ## Trilha EX180
 
 Objetivos da versão EX180V422K, com o curso DO180 4.22 como base:

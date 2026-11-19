@@ -173,6 +173,15 @@ Installing operators through the web console is not simulated; the game covers t
 - **One channel ahead:** switching an operator channel with manual approval.
 - **Platform oral exam:** five questions on channels, rollback, EUS, and operator updates.
 
+## Flashcards
+
+The **Flashcards** item, at the top of the list, opens a spaced repetition deck in the style
+of Anki: 100 EX280 cards and 90 EX180 cards, with questions about the commands and concepts of
+each chapter (for example: "Which command shows the difference between the local YAML and the
+server?" → `oc diff -f`). Answer from memory, flip the card (Space), and rate it from 1 to 4
+(Again, Hard, Good, Easy). Each button shows when the card comes back. There are at most 20
+new cards per day, a chapter filter, and a shortcut to practice the topic in the Lab.
+
 ## EX180 track
 
 Objectives of exam version EX180V422K, based on the DO180 4.22 course:

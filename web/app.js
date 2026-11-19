@@ -8,6 +8,8 @@ import { progress } from './engine/progress.js';
 import { GameTerminal } from './ui/terminal.js';
 import { Abort } from './sim/shell.js';
 import { banner, icone, temaDe } from './ui/ilustracoes.js';
+import { cardsDa } from './flashcards/index.js';
+import { responde, rotuloIntervalo, fila, resumo, novoEstado } from './engine/repeticao.js';
 
 const TEXTOS = {
   pt: {
@@ -28,6 +30,10 @@ const TEXTOS = {
     regras: ['Escolha uma missão à esquerda e clique em Iniciar: o ambiente é preparado como no `lab start`.', 'Resolva no terminal com `oc`. Tab completa comandos, tipos e nomes de recursos; `vi arquivo` abre o editor.', 'Clique em Corrigir (ou rode `lab grade`) para ver item a item o que passou.', 'Dicas custam XP. A solução comentada fica disponível depois da primeira correção.'],
     limite: 'Simulador não é cluster: ele cobre os comandos e regras que a prova cobra, e avisa quando um comando ainda não é simulado. Quando estiver confiante, faça um simulado no modo prova.',
     nota: 'Nota', xp: 'XP', de: 'de', melhor: 'melhor resultado',
+    flash: 'Flashcards', flashDesc: 'Repetição espaçada dos conceitos da prova', flashIntro: 'Leia a pergunta, responda de cabeça e só então vire o card. Seja honesto na nota: o intervalo até a próxima revisão depende dela.',
+    novos: 'Novos', aprendendo: 'Aprendendo', revisar: 'Para revisar', dominados: 'Dominados', todos: 'Todos', virar: 'Mostrar resposta', atalhoVirar: 'Espaço',
+    notas: ['De novo', 'Difícil', 'Bom', 'Fácil'], restam: (n) => `${n} na fila`, praticar: 'Praticar no Lab',
+    fim: 'Tudo revisado por agora!', fimProximo: (q) => `A próxima revisão é ${q}.`, fimNada: 'Não há mais cards novos neste filtro.', adiantar: 'Estudar adiantado', limiteNovos: (n) => `Limite de ${n} cards novos por dia, como no Anki.`, pergunta: 'Pergunta', resposta: 'Resposta',
     docsTitulo: `Procurar na documentação oficial (${'4.22'})`, docsGuia: 'Guia', docsTermos: 'Procure (Ctrl+F) por', docsComo: 'Abra o guia em página única e use a busca do navegador, como na prova. A dica não custa XP.', docsProva: 'Na prova você tem a documentação do produto, sem dicas. Treine a busca no índice:',
     modoProva: 'Modo prova', provaDesc: (h) => `${h} horas · todos os domínios · sem dicas`, trocaTrilha: 'Prova que você está estudando', cursoBase: (c) => `Missões baseadas no curso ${c} 4.22 e nos objetivos oficiais da prova.`, iniciarProva: 'Começar prova', entregar: 'Entregar prova', abandonar: 'Abandonar',
     confirmaEntregar: 'Entregar a prova agora? Depois disso a nota é calculada e não dá mais para mexer.', confirmaAbandonar: 'Abandonar a prova? Nada será corrigido.',
@@ -53,6 +59,10 @@ const TEXTOS = {
     regras: ['Pick a mission on the left and click Start: the environment is prepared as with `lab start`.', 'Solve it in the terminal with `oc`. Tab completes commands, resource types, and names; `vi file` opens the editor.', 'Click Grade (or run `lab grade`) to see item by item what passed.', 'Hints cost XP. The commented solution becomes available after the first grading.'],
     limite: 'A simulator is not a cluster: it covers the commands and rules the exam asks for, and tells you when a command is not simulated yet. When you feel ready, take a practice exam in exam mode.',
     nota: 'Score', xp: 'XP', de: 'of', melhor: 'best result',
+    flash: 'Flashcards', flashDesc: 'Spaced repetition of the exam concepts', flashIntro: 'Read the question, answer from memory, and only then flip the card. Be honest when rating: the interval until the next review depends on it.',
+    novos: 'New', aprendendo: 'Learning', revisar: 'Due', dominados: 'Mature', todos: 'All', virar: 'Show answer', atalhoVirar: 'Space',
+    notas: ['Again', 'Hard', 'Good', 'Easy'], restam: (n) => `${n} in the queue`, praticar: 'Practice in the Lab',
+    fim: 'All caught up for now!', fimProximo: (q) => `The next review is ${q}.`, fimNada: 'No more new cards in this filter.', adiantar: 'Study ahead', limiteNovos: (n) => `Limit of ${n} new cards per day, as in Anki.`, pergunta: 'Question', resposta: 'Answer',
     docsTitulo: `Search the official documentation (${'4.22'})`, docsGuia: 'Guide', docsTermos: 'Search (Ctrl+F) for', docsComo: 'Open the single-page guide and use the browser search, as in the exam. This hint costs no XP.', docsProva: 'In the exam you have the product documentation, without hints. Practice searching from the index:',
     modoProva: 'Exam mode', provaDesc: (h) => `${h} hours · every domain · no hints`, trocaTrilha: 'Exam you are studying for', cursoBase: (c) => `Missions based on the ${c} 4.22 course and the official exam objectives.`, iniciarProva: 'Start exam', entregar: 'Submit exam', abandonar: 'Abandon',
     confirmaEntregar: 'Submit the exam now? The score is calculated and nothing else can be changed.', confirmaAbandonar: 'Abandon the exam? Nothing will be graded.',
@@ -241,7 +251,9 @@ function desenhaLista() {
   const t = T();
   const tr = trilha(progress.trilha);
   const exames = EXAMS.filter((ex) => ex.trilha === tr.id);
-  let html = `<div class="capitulo"><h2><span class="rotulo">${icone('trofeu', 15)}${t.modoProva}</span><span></span></h2><p>${t.provaDesc(exames[0].minutes / 60)}</p></div>`;
+  const r = resumo(cardsDa(tr.id), progress.flash.estados);
+  let html = `<button type="button" class="missao flash-entrada${selecionada?.flash ? ' atual' : ''}" data-id="flash">${icone('cartas', 18)}<span class="nome"><b>${t.flash}</b><small>${t.flashDesc}</small></span><span class="selo${r.vencidos ? ' ativo' : ''}">${r.vencidos || r.novos}</span></button>`;
+  html += `<div class="capitulo"><h2><span class="rotulo">${icone('trofeu', 15)}${t.modoProva}</span><span></span></h2><p>${t.provaDesc(exames[0].minutes / 60)}</p></div>`;
   for (const ex of exames) {
     const p = progress.ofExam(ex.id);
     const classes = ['missao', 'prova', p.passou ? 'feita' : '', selecionada?.id === ex.id ? 'atual' : ''].join(' ');
@@ -289,6 +301,7 @@ function desenhaChamado() {
     el.innerHTML = `<div class="boas-vindas"><img class="logo-grande" src="assets/logo.svg" alt=""><h1>${esc(t.bemVindo(tr.nome))}</h1><p><b>${esc(tr.titulo[L()])}</b> · ${esc(t.cursoBase(tr.curso))}</p>${t.intro.map((p) => `<p>${rico(p)}</p>`).join('')}<ul class="passos">${t.regras.map((r, i) => `<li>${icone(icones[i], 22)}${rico(r)}</li>`).join('')}</ul><p class="aviso">${rico(t.limite)}</p></div>`;
     return;
   }
+  if (m.flash) return desenhaFlash(el);
   if (m.exam) return desenhaProva(el, m);
   const emCurso = ativa?.missao.id === m.id ? ativa : null;
   const p = progress.of(m.id);
@@ -351,6 +364,83 @@ function desenhaProva(el, m) {
   el.innerHTML = html;
 }
 
+// ------------------------------------------------------------- flashcards
+
+const flash = { filtro: null, fila: null, virado: false, adiantado: false };
+
+function montaFila() {
+  const cards = cardsDa(progress.trilha, flash.filtro);
+  const f = progress.flash;
+  flash.fila = fila(cards, f.estados, Date.now(), f.novos);
+  if (flash.adiantado && !flash.fila.length) {
+    // Estudar adiantado: os próximos a vencer, mesmo antes da hora.
+    flash.fila = cards.filter((c) => f.estados[c.id]).sort((a, b) => f.estados[a.id].vence - f.estados[b.id].vence).slice(0, 20);
+  }
+  flash.virado = false;
+}
+
+function quando(ms) {
+  const min = Math.round((ms - Date.now()) / 60000);
+  const pt = L() === 'pt';
+  if (min < 60) return pt ? `em ${Math.max(1, min)} min` : `in ${Math.max(1, min)} min`;
+  if (min < 1440) return pt ? `em ${Math.round(min / 60)} h` : `in ${Math.round(min / 60)} h`;
+  return pt ? `em ${Math.round(min / 1440)} dias` : `in ${Math.round(min / 1440)} days`;
+}
+
+function desenhaFlash(el) {
+  const t = T();
+  const tr = trilha(progress.trilha);
+  if (!flash.fila) montaFila();
+  const estados = progress.flash.estados;
+  const todos = cardsDa(tr.id, flash.filtro);
+  const r = resumo(todos, estados);
+  let html = banner(`flash-${tr.id}`, t.flash);
+  html += `<div class="etiqueta">${icone('cartas', 14)}${t.flash} · ${tr.nome}</div><h1>${t.flash} ${tr.nome}</h1>`;
+  html += `<div class="meta"><span>${t.novos}: <b>${r.novos}</b></span><span>${t.aprendendo}: <b>${r.aprendendo}</b></span><span>${t.revisar}: <b>${r.vencidos}</b></span><span>${t.dominados}: <b>${r.maduros}</b> / ${r.total}</span></div>`;
+  html += `<div class="filtros">${[{ id: null, rotulo: t.todos }, ...tr.capitulos.map((c) => ({ id: c.id, rotulo: `${c.id.slice(1)} · ${c.title[L()]}` }))].map((f) => `<button type="button" class="chip${flash.filtro === f.id ? ' ativo' : ''}" data-filtro="${f.id ?? ''}">${esc(f.rotulo)}</button>`).join('')}</div>`;
+  const card = flash.fila[0];
+  if (!card) {
+    const proximos = todos.map((c) => estados[c.id]?.vence).filter(Boolean).sort((a, b) => a - b);
+    html += `<div class="flashcard vazio"><div class="fim">🎉</div><h2>${t.fim}</h2><p>${proximos.length ? t.fimProximo(quando(proximos[0])) : t.fimNada}</p><p class="nota">${t.limiteNovos(20)}</p>${proximos.length ? `<button type="button" data-flash="adiantar">${t.adiantar}</button>` : ''}</div>`;
+    el.innerHTML = html;
+    return;
+  }
+  const cap = tr.capitulos.find((c) => c.id === card.cap);
+  const estado = estados[card.id] || novoEstado();
+  const tipo = !estados[card.id] ? t.novos : estado.intervalo === 0 ? t.aprendendo : t.revisar;
+  html += `<div class="flashcard${flash.virado ? ' virado' : ''}" data-flash="virar">
+    <div class="flash-topo"><span class="chip-tipo">${esc(tipo)}</span><span>${icone(temaDe(cap?.missions[0]?.id || ''), 14)} ${esc(cap ? cap.title[L()] : '')}</span><span>${t.restam(flash.fila.length)}</span></div>
+    <div class="flash-rotulo">${t.pergunta}</div>
+    <div class="flash-pergunta">${rico(card.q[L()])}</div>
+    ${flash.virado ? `<div class="flash-rotulo">${t.resposta}</div><div class="flash-resposta">${rico(card.a[L()])}</div>` : `<button type="button" class="primario virar" data-flash="virar">${t.virar} <kbd>${t.atalhoVirar}</kbd></button>`}
+  </div>`;
+  if (flash.virado) {
+    html += `<div class="notas-flash">${t.notas.map((n, i) => `<button type="button" class="nota-${i}" data-nota="${i}"><span>${n}</span><small>${rotuloIntervalo(estado, i)}</small><kbd>${i + 1}</kbd></button>`).join('')}</div>`;
+    if (cap?.missions[0]) html += `<p class="praticar"><button type="button" class="fantasma" data-praticar="${cap.missions[0].id}">${icone('terminal', 15)} ${t.praticar}: ${esc(cap.title[L()])}</button></p>`;
+  } else html += `<p class="nota flash-dica">${t.flashIntro}</p>`;
+  el.innerHTML = html;
+}
+
+function notaFlash(nota) {
+  const card = flash.fila?.[0];
+  if (!card || !flash.virado) return;
+  const estados = progress.flash.estados;
+  const eraNovo = !estados[card.id];
+  const novo = responde(estados[card.id] || novoEstado(), nota);
+  progress.gravaCard(card.id, novo, eraNovo);
+  flash.fila.shift();
+  // Ainda em aprendizado e vencendo nesta sessão: volta para o fim da fila.
+  if (novo.intervalo === 0) flash.fila.push(card);
+  flash.virado = false;
+  desenha();
+}
+
+function virarFlash() {
+  if (!flash.fila?.length || flash.virado) return;
+  flash.virado = true;
+  desenhaChamado();
+}
+
 function desenhaRelogio() {
   const r = $('relogio');
   if (!ativa) {
@@ -373,6 +463,8 @@ function desenhaRelogio() {
 }
 
 function desenha() {
+  // Nos flashcards o terminal sai de cena e o card ocupa o painel todo.
+  document.body.classList.toggle('modo-flash', Boolean(selecionada?.flash));
   desenhaTopo();
   desenhaLista();
   desenhaChamado();
@@ -391,12 +483,38 @@ $('lista').addEventListener('click', (e) => {
   }
   const b = e.target.closest('.missao');
   if (!b) return;
-  selecionada = byId(b.dataset.id);
+  selecionada = b.dataset.id === 'flash' ? { flash: true, id: 'flash' } : byId(b.dataset.id);
+  if (selecionada.flash) flash.fila = null;
   desenha();
   $('chamado').scrollTop = 0;
 });
 
 $('chamado').addEventListener('click', async (e) => {
+  const filtro = e.target.closest('[data-filtro]');
+  if (filtro) {
+    flash.filtro = filtro.dataset.filtro || null;
+    flash.adiantado = false;
+    montaFila();
+    desenhaChamado();
+    return;
+  }
+  const nota = e.target.closest('[data-nota]');
+  if (nota) return notaFlash(Number(nota.dataset.nota));
+  const praticar = e.target.closest('[data-praticar]');
+  if (praticar) {
+    selecionada = byId(praticar.dataset.praticar);
+    desenha();
+    $('chamado').scrollTop = 0;
+    return;
+  }
+  const acaoFlash = e.target.closest('[data-flash]')?.dataset.flash;
+  if (acaoFlash === 'virar') return virarFlash();
+  if (acaoFlash === 'adiantar') {
+    flash.adiantado = true;
+    montaFila();
+    desenhaChamado();
+    return;
+  }
   const tarefa = e.target.closest('.tarefas li');
   if (tarefa && !e.target.closest('a')) {
     const chave = tarefa.parentElement.dataset.chave;
@@ -442,8 +560,10 @@ $('trilhas').addEventListener('click', (e) => {
   const b = e.target.closest('[data-trilha]');
   if (!b || b.dataset.trilha === progress.trilha) return;
   progress.trilha = b.dataset.trilha;
+  flash.fila = null;
+  flash.filtro = null;
   // A missão em andamento continua; só a lista muda.
-  if (selecionada && selecionada.trilha !== progress.trilha) selecionada = ativa && ativa.missao.trilha === progress.trilha ? ativa.missao : null;
+  if (selecionada && !selecionada.flash && selecionada.trilha !== progress.trilha) selecionada = ativa && ativa.missao.trilha === progress.trilha ? ativa.missao : null;
   desenha();
   $('chamado').scrollTop = 0;
 });
@@ -456,6 +576,19 @@ $('btn-idioma').addEventListener('click', () => {
 });
 
 term.onCommand = () => salvaSessao();
+
+// Atalhos dos flashcards: Espaço vira, 1 a 4 respondem (fora do terminal e do editor).
+document.addEventListener('keydown', (e) => {
+  if (!selecionada?.flash || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest?.('.terminal, textarea, input, .editor')) return;
+  if ((e.key === ' ' || e.key === 'Enter') && !flash.virado) {
+    e.preventDefault();
+    virarFlash();
+  } else if (flash.virado && ['1', '2', '3', '4'].includes(e.key)) {
+    e.preventDefault();
+    notaFlash(Number(e.key) - 1);
+  }
+});
 
 // O relógio do cluster simulado anda em tempo real enquanto há missão ativa.
 setInterval(() => {

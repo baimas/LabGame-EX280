@@ -22,11 +22,13 @@ const ICONES = {
   globo: '<circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6M12 3.2c2.4 2.4 3.6 5.3 3.6 8.8s-1.2 6.4-3.6 8.8c-2.4-2.4-3.6-5.3-3.6-8.8s1.2-6.4 3.6-8.8z"/>',
   documento: '<path d="M6 2.8h8l4.5 4.5v13.9H6z"/><path d="M14 2.8v4.5h4.5M9 12h6M9 15.5h6"/>',
   trofeu: '<path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 6H4.5a3 3 0 0 0 3 4M16.5 6h3a3 3 0 0 1-3 4M12 13.5V17M8.5 20.5h7M9.5 17h5"/>',
+  cartas: '<rect x="7" y="3" width="13" height="17" rx="2.5" transform="rotate(8 13.5 11.5)"/><rect x="3.5" y="4.5" width="13" height="17" rx="2.5"/><path d="M8 11.2a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.5M10 17h.01"/>',
   pacote: '<path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9M7.8 5.3l8.4 4.5"/>',
 };
 
 // Assunto de cada missão pelo id.
 const TEMAS = [
+  [/^flash/, 'cartas'],
   [/prova/, 'trofeu'],
   [/instalar-oc|inspecionar|inventario|primeiro-dia|e2-pods/, 'terminal'],
   [/documentacao/, 'documento'],
